@@ -3,7 +3,9 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  OneToMany,
 } from 'typeorm';
+import { Verificacion } from './Verificacion.entidad';
 
 @Entity('usuarios')
 export class Usuario {
@@ -30,6 +32,10 @@ export class Usuario {
 
   @Column({ length: 20, nullable: true })
   telefono: string;
+
+  // ✅ Esto es lo que faltaba
+  @OneToMany(() => Verificacion, (v) => v.usuario)
+  verificaciones: Verificacion[];
 
   @CreateDateColumn()
   createdAt: Date;

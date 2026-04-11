@@ -41,7 +41,7 @@ export class Tarea {
   @Column({ type: 'enum', enum: TipoActividad })
   tipoActividad: TipoActividad;
 
-  @Column({ type: 'datetime' })
+  @Column({ type: 'timestamp' })
   fechaProgramada: Date;
 
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0.00 })
@@ -63,11 +63,11 @@ export class Tarea {
   costoTransporte: number;
 
   // ── Atributos de cosecha (solo aplican cuando tipoActividad === COSECHA) ──
-  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
-  cosechaCantidadObtenida: number | null;
+ @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+cosechaCantidadObtenida: number | null;
 
-  @Column({ length: 50, nullable: true })
-  cosechaUnidadMedida: string | null;
+@Column({ type: 'varchar', length: 50, nullable: true })
+cosechaUnidadMedida: string | null;
 
   @CreateDateColumn()
   createdAt: Date;
