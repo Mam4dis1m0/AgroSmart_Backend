@@ -27,7 +27,7 @@ export class ProduccionPalma {
     precision: 10,
     scale: 2,
   })
-  pesokg: string | null;
+  pesokg: number | null;
 
   @Column("character varying", { name: "calidad", nullable: true, length: 10 })
   calidad: string | null;

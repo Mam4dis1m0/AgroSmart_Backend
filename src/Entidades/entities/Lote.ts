@@ -1,3 +1,4 @@
+
 import {
   Column,
   Entity,
@@ -8,6 +9,7 @@ import {
 import { Cultivo } from "./Cultivo";
 import { Palma } from "./Palma";
 import { ProduccionPalma } from "./ProduccionPalma";
+import { numericTransformer } from "../../common/transformers";
 
 @Index("lote_pkey", ["idlote"], { unique: true })
 @Entity("lote", { schema: "public" })
@@ -23,8 +25,9 @@ export class Lote {
     nullable: true,
     precision: 10,
     scale: 2,
+    transformer: numericTransformer,
   })
-  areahectareas: string | null;
+  areahectareas: number | null;  // ✅
 
   @Column("character varying", {
     name: "ubicacion",

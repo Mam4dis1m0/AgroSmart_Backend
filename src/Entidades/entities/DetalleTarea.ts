@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { Insumo } from './Insumo';
 import { Tarea } from './Tarea';
+import { numericTransformer } from '../../common/transformers';
 
 @Index('detalle_tarea_pkey', ['iddetalletarea'], { unique: true })
 @Entity('detalle_tarea', { schema: 'public' })
@@ -20,8 +21,9 @@ export class DetalleTarea {
     nullable: true,
     precision: 10,
     scale: 2,
+    transformer: numericTransformer,
   })
-  cantidadusada: string | null;
+  cantidadusada: number | null;  // ✅
 
   @ManyToOne(() => Insumo, (insumo) => insumo.detalleTareas)
   @JoinColumn([{ name: 'idinsumo', referencedColumnName: 'idinsumo' }])

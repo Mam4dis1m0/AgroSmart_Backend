@@ -22,7 +22,7 @@ export class Empleado {
     precision: 10,
     scale: 2,
   })
-  montoporhora: string | null;
+  montoporhora: number | null;
 
   @Column("numeric", {
     name: "montoporjornal",
@@ -30,7 +30,7 @@ export class Empleado {
     precision: 10,
     scale: 2,
   })
-  montoporjornal: string | null;
+  montoporjornal: number | null;
 
   @OneToMany(
     () => AsignacionTarea,

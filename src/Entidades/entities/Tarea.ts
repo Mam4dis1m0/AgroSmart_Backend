@@ -12,6 +12,11 @@ import { DetalleTarea } from "./DetalleTarea";
 import { Administrador } from "./Administrador";
 import { Cultivo } from "./Cultivo";
 
+const numericTransformer = {
+  to: (v: number | null) => v,
+  from: (v: string | null) => (v !== null ? parseFloat(v) : null),
+};
+
 @Index("tarea_pkey", ["idtarea"], { unique: true })
 @Entity("tarea", { schema: "public" })
 export class Tarea {
@@ -33,8 +38,9 @@ export class Tarea {
     nullable: true,
     precision: 10,
     scale: 2,
+    transformer: numericTransformer,
   })
-  tiempototaltarea: string | null;
+  tiempototaltarea: number | null;  // ✅
 
   @Column("character varying", { name: "estado", nullable: true, length: 50 })
   estado: string | null;
@@ -54,24 +60,23 @@ export class Tarea {
     nullable: true,
     precision: 10,
     scale: 2,
+    transformer: numericTransformer,
   })
-  costototal: string | null;
+  costototal: number | null;  // ✅
 
   @Column("numeric", {
     name: "costotransporte",
     nullable: true,
     precision: 10,
     scale: 2,
+    transformer: numericTransformer,
   })
-  costotransporte: string | null;
+  costotransporte: number | null;  // ✅
 
   @Column("jsonb", { name: "cosecha", nullable: true })
   cosecha: object | null;
 
-  @OneToMany(
-    () => AsignacionTarea,
-    (asignacionTarea) => asignacionTarea.idtarea
-  )
+  @OneToMany(() => AsignacionTarea, (asignacionTarea) => asignacionTarea.idtarea)
   asignacionTareas: AsignacionTarea[];
 
   @OneToMany(() => DetalleTarea, (detalleTarea) => detalleTarea.idtarea)

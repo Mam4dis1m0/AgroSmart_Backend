@@ -1,22 +1,22 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-
 import { join } from 'path';
-import { UsuariosModule } from './usuarios/usuarios.module';
-import { AdministradorModule } from './administrador/administrador.module';
-import { EmpleadoModule } from './empleado/empleado.module';
-import { LotesModule } from './lotes/lotes.module';
-import { PalmasModule } from './palmas/palmas.module';
-import { CultivosModule } from './cultivos/cultivos.module';
-import { ProduccionPalmaModule } from './produccion-palma/produccion-palma.module';
-import { InsumosModule } from './insumos/insumos.module';
-import { TareasModule } from './tareas/tareas.module';
-import { DetalleTareaModule } from './detalle-tarea/detalle-tarea.module';
-import { AsignacionTareaModule } from './asignacion-tarea/asignacion-tarea.module';
-import { EmpleadoCosechaModule } from './empleado-cosecha/empleado-cosecha.module';
-import { NotificacionesModule } from './notificaciones/notificaciones.module';
-import { AuditoriaModule } from './auditoria/auditoria.module';
+
+import { UsuariosModule } from './Modules/usuarios/usuarios.module';
+import { AdministradorModule } from './Modules/administrador/administrador.module';
+import { EmpleadoModule } from './Modules/empleado/empleado.module';
+import { LotesModule } from './Modules/lotes/lotes.module';
+import { PalmasModule } from './Modules/palmas/palmas.module';
+import { CultivosModule } from './Modules/cultivos/cultivos.module';
+import { ProduccionPalmaModule } from './Modules/produccion-palma/produccion-palma.module';
+import { InsumosModule } from './Modules/insumos/insumos.module';
+import { TareasModule } from './Modules/tareas/tareas.module';
+import { DetalleTareaModule } from './Modules/detalle-tarea/detalle-tarea.module';
+import { AsignacionTareaModule } from './Modules/asignacion-tarea/asignacion-tarea.module';
+import { EmpleadoCosechaModule } from './Modules/empleado-cosecha/empleado-cosecha.module';
+import { NotificacionesModule } from './Modules/notificaciones/notificaciones.module';
+import { AuditoriaModule } from './Modules/auditoria/auditoria.module';
 
 @Module({
   imports: [

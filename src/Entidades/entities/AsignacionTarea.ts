@@ -9,6 +9,7 @@ import {
 import { Administrador } from "./Administrador";
 import { Empleado } from "./Empleado";
 import { Tarea } from "./Tarea";
+import { numericTransformer } from "../../common/transformers";
 
 @Index("asignacion_tarea_pkey", ["idasigtarea"], { unique: true })
 @Entity("asignacion_tarea", { schema: "public" })
@@ -27,29 +28,29 @@ export class AsignacionTarea {
     nullable: true,
     precision: 10,
     scale: 2,
+    transformer: numericTransformer,
   })
-  horastrabajadas: string | null;
+  horastrabajadas: number | null;  // ✅
 
   @Column("numeric", {
     name: "jornadastrabajadas",
     nullable: true,
     precision: 10,
     scale: 2,
+    transformer: numericTransformer,
   })
-  jornadastrabajadas: string | null;
+  jornadastrabajadas: number | null;  // ✅
 
   @Column("numeric", {
     name: "pagoacordado",
     nullable: true,
     precision: 10,
     scale: 2,
+    transformer: numericTransformer,
   })
-  pagoacordado: string | null;
+  pagoacordado: number | null;  // ✅
 
-  @ManyToOne(
-    () => Administrador,
-    (administrador) => administrador.asignacionTareas
-  )
+  @ManyToOne(() => Administrador, (administrador) => administrador.asignacionTareas)
   @JoinColumn([{ name: "idadminasignador", referencedColumnName: "idusuario" }])
   idadminasignador: Administrador;
 

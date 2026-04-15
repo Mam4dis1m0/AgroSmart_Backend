@@ -28,7 +28,7 @@ export class Insumo {
     precision: 10,
     scale: 2,
   })
-  stockactual: string | null;
+  stockactual: number | null;
 
   @Column("numeric", {
     name: "stockminimo",
@@ -36,7 +36,7 @@ export class Insumo {
     precision: 10,
     scale: 2,
   })
-  stockminimo: string | null;
+  stockminimo: number | null;
 
   @Column("numeric", {
     name: "costounitario",
@@ -44,7 +44,7 @@ export class Insumo {
     precision: 10,
     scale: 2,
   })
-  costounitario: string | null;
+  costounitario: number | null;
 
   @Column("character varying", {
     name: "unidadmedida",
