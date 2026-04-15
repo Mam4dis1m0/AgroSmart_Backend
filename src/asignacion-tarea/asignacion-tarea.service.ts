@@ -11,13 +11,15 @@ export class AsignacionTareaService {
   ) {}
 
   findAll() {
-    return this.repo.find({
-      relations: ['idempleado2', 'idtarea2'], // Ajusta según los nombres en tu archivo de Entidad
-    });
+    return this.repo.find({ relations: ['idtarea', 'idempleado', 'idadminasignador'] });
   }
 
   findOne(id: number) {
-    return this.repo.findOneBy({ idasigtarea: id });
+    return this.repo.findOne({ where: { idasigtarea: id }, relations: ['idtarea', 'idempleado', 'idadminasignador'] });
+  }
+
+  findByEmpleado(idempleado: number) {
+    return this.repo.find({ where: { idempleado: { idusuario: idempleado } }, relations: ['idtarea'] });
   }
 
   create(data: Partial<AsignacionTarea>) {
@@ -31,6 +33,6 @@ export class AsignacionTareaService {
 
   async remove(id: number) {
     await this.repo.delete(id);
-    return { message: 'Asignación eliminada con éxito' };
+    return { message: 'Asignación eliminada' };
   }
 }

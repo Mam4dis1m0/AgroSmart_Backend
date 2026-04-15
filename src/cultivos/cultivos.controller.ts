@@ -4,19 +4,30 @@ import { Cultivo } from '../Entidades/entities/Cultivo';
 
 @Controller('cultivos')
 export class CultivosController {
-  constructor(private readonly service: CultivosService) {}
+  constructor(private readonly cultivosService: CultivosService) {}
 
-  @Get() findAll() { return this.service.findAll(); }
+  @Get()
+  findAll() {
+    return this.cultivosService.findAll();
+  }
 
-  @Get(':id') findOne(@Param('id') id: string)
-   { return this.service.findOne(+id); }
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.cultivosService.findOne(+id);
+  }
 
-  @Post() create(@Body() body: Partial<Cultivo>) 
-  { return this.service.create(body); }
+  @Post()
+  create(@Body() body: Partial<Cultivo>) {
+    return this.cultivosService.create(body);
+  }
 
-  @Put(':id') update(@Param('id') id: string, @Body() body: Partial<Cultivo>) 
-  { return this.service.update(+id, body); }
+  @Put(':id')
+  update(@Param('id') id: string, @Body() body: Partial<Cultivo>) {
+    return this.cultivosService.update(+id, body);
+  }
 
-  @Delete(':id') remove(@Param('id') id: string)
-   { return this.service.remove(+id); }
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.cultivosService.remove(+id);
+  }
 }

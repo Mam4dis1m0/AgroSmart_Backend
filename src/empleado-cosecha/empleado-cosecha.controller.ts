@@ -4,30 +4,35 @@ import { EmpleadoCosecha } from '../Entidades/entities/EmpleadoCosecha';
 
 @Controller('empleado-cosecha')
 export class EmpleadoCosechaController {
-  constructor(private readonly service: EmpleadoCosechaService) {}
+  constructor(private readonly empleadoCosechaService: EmpleadoCosechaService) {}
 
-  @Get() 
-  findAll() { 
-    return this.service.findAll(); 
+  @Get()
+  findAll() {
+    return this.empleadoCosechaService.findAll();
   }
 
-  @Get(':id') 
-  findOne(@Param('id') id: string) { 
-    return this.service.findOne(+id); 
+  @Get('empleado/:id')
+  findByEmpleado(@Param('id') id: string) {
+    return this.empleadoCosechaService.findByEmpleado(+id);
   }
 
-  @Post() 
-  create(@Body() body: Partial<EmpleadoCosecha>) { 
-    return this.service.create(body); 
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.empleadoCosechaService.findOne(+id);
   }
 
-  @Put(':id') 
-  update(@Param('id') id: string, @Body() body: Partial<EmpleadoCosecha>) { 
-    return this.service.update(+id, body); 
+  @Post()
+  create(@Body() body: Partial<EmpleadoCosecha>) {
+    return this.empleadoCosechaService.create(body);
   }
 
-  @Delete(':id') 
-  remove(@Param('id') id: string) { 
-    return this.service.remove(+id); 
+  @Put(':id')
+  update(@Param('id') id: string, @Body() body: Partial<EmpleadoCosecha>) {
+    return this.empleadoCosechaService.update(+id, body);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.empleadoCosechaService.remove(+id);
   }
 }

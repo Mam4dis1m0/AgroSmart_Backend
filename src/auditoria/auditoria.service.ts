@@ -10,26 +10,24 @@ export class AuditoriaService {
     private repo: Repository<Auditoria>,
   ) {}
 
-  // En auditoría suele servir ver lo último que pasó primero
-  findAll() { 
-    return this.repo.find({
-      order: { idauditoria: 'DESC' } 
-    }); 
+  findAll() {
+    return this.repo.find({ order: { fecha: 'DESC' } });
   }
 
-  findOne(id: number) { 
-    return this.repo.findOneBy({ idauditoria: id }); 
-  }
-
-  create(data: Partial<Auditoria>) { 
-    return this.repo.save(this.repo.create(data)); 
-  }
-
-  async update(id: number, data: Partial<Auditoria>) {
-    await this.repo.update(id, data);
+  findOne(id: number) {
     return this.repo.findOneBy({ idauditoria: id });
   }
 
+  findByTabla(tabla: string) {
+    return this.repo.find({ where: { tablaNombre: tabla }, order: { fecha: 'DESC' } });
+  }
+
+  create(data: Partial<Auditoria>) {
+    return this.repo.save(this.repo.create(data));
+  }
+
+  // La auditoría generalmente no se actualiza ni elimina,
+  // pero se deja por completitud
   async remove(id: number) {
     await this.repo.delete(id);
     return { message: 'Registro de auditoría eliminado' };

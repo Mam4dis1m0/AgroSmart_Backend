@@ -4,30 +4,40 @@ import { Notificacion } from '../Entidades/entities/Notificacion';
 
 @Controller('notificaciones')
 export class NotificacionesController {
-  constructor(private readonly service: NotificacionesService) {}
+  constructor(private readonly notificacionesService: NotificacionesService) {}
 
-  @Get() 
-  findAll() { 
-    return this.service.findAll(); 
+  @Get()
+  findAll() {
+    return this.notificacionesService.findAll();
   }
 
-  @Get(':id') 
-  findOne(@Param('id') id: string) { 
-    return this.service.findOne(+id); 
+  @Get('no-leidas')
+  findNoLeidas() {
+    return this.notificacionesService.findNoLeidas();
   }
 
-  @Post() 
-  create(@Body() body: Partial<Notificacion>) { 
-    return this.service.create(body); 
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.notificacionesService.findOne(+id);
   }
 
-  @Put(':id') 
-  update(@Param('id') id: string, @Body() body: Partial<Notificacion>) { 
-    return this.service.update(+id, body); 
+  @Post()
+  create(@Body() body: Partial<Notificacion>) {
+    return this.notificacionesService.create(body);
   }
 
-  @Delete(':id') 
-  remove(@Param('id') id: string) { 
-    return this.service.remove(+id); 
+  @Put(':id/leer')
+  marcarLeida(@Param('id') id: string) {
+    return this.notificacionesService.marcarLeida(+id);
+  }
+
+  @Put('leer-todas')
+  marcarTodasLeidas() {
+    return this.notificacionesService.marcarTodasLeidas();
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.notificacionesService.remove(+id);
   }
 }

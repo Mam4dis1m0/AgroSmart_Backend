@@ -10,18 +10,20 @@ export class DetalleTareaService {
     private repo: Repository<DetalleTarea>,
   ) {}
 
-  findAll() { 
-    return this.repo.find({
-      relations: ['idtarea2'] // Trae la información de la tarea asociada
-    }); 
+  findAll() {
+    return this.repo.find({ relations: ['idtarea', 'idinsumo'] });
   }
 
-  findOne(id: number) { 
-    return this.repo.findOneBy({ iddetalletarea: id }); 
+  findOne(id: number) {
+    return this.repo.findOne({ where: { iddetalletarea: id }, relations: ['idtarea', 'idinsumo'] });
   }
 
-  create(data: Partial<DetalleTarea>) { 
-    return this.repo.save(this.repo.create(data)); 
+  findByTarea(idtarea: number) {
+    return this.repo.find({ where: { idtarea: { idtarea } }, relations: ['idinsumo'] });
+  }
+
+  create(data: Partial<DetalleTarea>) {
+    return this.repo.save(this.repo.create(data));
   }
 
   async update(id: number, data: Partial<DetalleTarea>) {

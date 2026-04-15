@@ -10,18 +10,20 @@ export class EmpleadoCosechaService {
     private repo: Repository<EmpleadoCosecha>,
   ) {}
 
-  findAll() { 
-    return this.repo.find({
-      relations: ['idempleado2', 'idcosecha2'] // Si quieres que traiga los datos del empleado y la cosecha
-    }); 
+  findAll() {
+    return this.repo.find({ relations: ['idempleado'] });
   }
 
-  findOne(id: number) { 
-    return this.repo.findOneBy({ idempleadocosecha: id }); 
+  findOne(id: number) {
+    return this.repo.findOne({ where: { idempleadocosecha: id }, relations: ['idempleado'] });
   }
 
-  create(data: Partial<EmpleadoCosecha>) { 
-    return this.repo.save(this.repo.create(data)); 
+  findByEmpleado(idempleado: number) {
+    return this.repo.find({ where: { idempleado: { idusuario: idempleado } }, relations: ['idempleado'] });
+  }
+
+  create(data: Partial<EmpleadoCosecha>) {
+    return this.repo.save(this.repo.create(data));
   }
 
   async update(id: number, data: Partial<EmpleadoCosecha>) {
@@ -31,6 +33,6 @@ export class EmpleadoCosechaService {
 
   async remove(id: number) {
     await this.repo.delete(id);
-    return { message: 'Registro de cosecha por empleado eliminado' };
+    return { message: 'Registro de cosecha eliminado' };
   }
 }

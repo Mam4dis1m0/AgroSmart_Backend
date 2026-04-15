@@ -1,33 +1,33 @@
-import { Controller, Get, Post, Put, Delete, Param, Body } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Body } from '@nestjs/common';
 import { AuditoriaService } from './auditoria.service';
 import { Auditoria } from '../Entidades/entities/Auditoria';
 
 @Controller('auditoria')
 export class AuditoriaController {
-  constructor(private readonly service: AuditoriaService) {}
+  constructor(private readonly auditoriaService: AuditoriaService) {}
 
-  @Get() 
-  findAll() { 
-    return this.service.findAll(); 
+  @Get()
+  findAll() {
+    return this.auditoriaService.findAll();
   }
 
-  @Get(':id') 
-  findOne(@Param('id') id: string) { 
-    return this.service.findOne(+id); 
+  @Get('tabla/:tabla')
+  findByTabla(@Param('tabla') tabla: string) {
+    return this.auditoriaService.findByTabla(tabla);
   }
 
-  @Post() 
-  create(@Body() body: Partial<Auditoria>) { 
-    return this.service.create(body); 
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.auditoriaService.findOne(+id);
   }
 
-  @Put(':id') 
-  update(@Param('id') id: string, @Body() body: Partial<Auditoria>) { 
-    return this.service.update(+id, body); 
+  @Post()
+  create(@Body() body: Partial<Auditoria>) {
+    return this.auditoriaService.create(body);
   }
 
-  @Delete(':id') 
-  remove(@Param('id') id: string) { 
-    return this.service.remove(+id); 
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.auditoriaService.remove(+id);
   }
 }

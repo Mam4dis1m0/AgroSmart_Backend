@@ -10,21 +10,30 @@ export class NotificacionesService {
     private repo: Repository<Notificacion>,
   ) {}
 
-  findAll() { 
-    return this.repo.find(); 
+  findAll() {
+    return this.repo.find({ order: { fecha: 'DESC' } });
   }
 
-  findOne(id: number) { 
-    return this.repo.findOneBy({ idnotificacion: id }); 
-  }
-
-  create(data: Partial<Notificacion>) { 
-    return this.repo.save(this.repo.create(data)); 
-  }
-
-  async update(id: number, data: Partial<Notificacion>) {
-    await this.repo.update(id, data);
+  findOne(id: number) {
     return this.repo.findOneBy({ idnotificacion: id });
+  }
+
+  findNoLeidas() {
+    return this.repo.find({ where: { leida: false }, order: { fecha: 'DESC' } });
+  }
+
+  create(data: Partial<Notificacion>) {
+    return this.repo.save(this.repo.create(data));
+  }
+
+  async marcarLeida(id: number) {
+    await this.repo.update(id, { leida: true });
+    return this.repo.findOneBy({ idnotificacion: id });
+  }
+
+  async marcarTodasLeidas() {
+    await this.repo.update({ leida: false }, { leida: true });
+    return { message: 'Todas las notificaciones marcadas como leídas' };
   }
 
   async remove(id: number) {

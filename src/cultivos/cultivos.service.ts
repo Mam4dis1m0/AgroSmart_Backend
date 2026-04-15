@@ -11,18 +11,22 @@ export class CultivosService {
   ) {}
 
   findAll() {
-    return this.repo.find();
+    return this.repo.find({ relations: ['idlote', 'idadminsupervisor'] });
   }
+
   findOne(id: number) {
-    return this.repo.findOneBy({ idcultivo: id });
+    return this.repo.findOne({ where: { idcultivo: id }, relations: ['idlote', 'idadminsupervisor'] });
   }
+
   create(data: Partial<Cultivo>) {
     return this.repo.save(this.repo.create(data));
   }
+
   async update(id: number, data: Partial<Cultivo>) {
     await this.repo.update(id, data);
     return this.repo.findOneBy({ idcultivo: id });
   }
+
   async remove(id: number) {
     await this.repo.delete(id);
     return { message: 'Cultivo eliminado' };

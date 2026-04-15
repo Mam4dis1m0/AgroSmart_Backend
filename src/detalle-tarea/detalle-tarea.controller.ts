@@ -4,30 +4,35 @@ import { DetalleTarea } from '../Entidades/entities/DetalleTarea';
 
 @Controller('detalle-tarea')
 export class DetalleTareaController {
-  constructor(private readonly service: DetalleTareaService) {}
+  constructor(private readonly detalleTareaService: DetalleTareaService) {}
 
-  @Get() 
-  findAll() { 
-    return this.service.findAll(); 
+  @Get()
+  findAll() {
+    return this.detalleTareaService.findAll();
   }
 
-  @Get(':id') 
-  findOne(@Param('id') id: string) { 
-    return this.service.findOne(+id); 
+  @Get('tarea/:idtarea')
+  findByTarea(@Param('idtarea') idtarea: string) {
+    return this.detalleTareaService.findByTarea(+idtarea);
   }
 
-  @Post() 
-  create(@Body() body: Partial<DetalleTarea>) { 
-    return this.service.create(body); 
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.detalleTareaService.findOne(+id);
   }
 
-  @Put(':id') 
-  update(@Param('id') id: string, @Body() body: Partial<DetalleTarea>) { 
-    return this.service.update(+id, body); 
+  @Post()
+  create(@Body() body: Partial<DetalleTarea>) {
+    return this.detalleTareaService.create(body);
   }
 
-  @Delete(':id') 
-  remove(@Param('id') id: string) { 
-    return this.service.remove(+id); 
+  @Put(':id')
+  update(@Param('id') id: string, @Body() body: Partial<DetalleTarea>) {
+    return this.detalleTareaService.update(+id, body);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.detalleTareaService.remove(+id);
   }
 }

@@ -1,32 +1,33 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Delete,
-  Param,
-  Body,
-} from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body } from '@nestjs/common';
 import { EmpleadoService } from './empleado.service';
 import { Empleado } from '../Entidades/entities/Empleado';
 
-@Controller('empleado')
+@Controller('empleados')
 export class EmpleadoController {
-  constructor(private readonly service: EmpleadoService) {}
+  constructor(private readonly empleadoService: EmpleadoService) {}
 
-  @Get() findAll() {
-    return this.service.findAll();
+  @Get()
+  findAll() {
+    return this.empleadoService.findAll();
   }
-  @Get(':id') findOne(@Param('id') id: string) {
-    return this.service.findOne(+id);
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.empleadoService.findOne(+id);
   }
-  @Post() create(@Body() body: Partial<Empleado>) {
-    return this.service.create(body);
+
+  @Post()
+  create(@Body() body: Partial<Empleado>) {
+    return this.empleadoService.create(body);
   }
-  @Put(':id') update(@Param('id') id: string, @Body() body: Partial<Empleado>) {
-    return this.service.update(+id, body);
+
+  @Put(':id')
+  update(@Param('id') id: string, @Body() body: Partial<Empleado>) {
+    return this.empleadoService.update(+id, body);
   }
-  @Delete(':id') remove(@Param('id') id: string) {
-    return this.service.remove(+id);
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.empleadoService.remove(+id);
   }
 }
