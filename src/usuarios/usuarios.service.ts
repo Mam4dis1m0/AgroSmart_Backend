@@ -1,41 +1,35 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Usuario } from '../Entidades/Usuario.entidad';
-import { CreateUsuarioDto } from './dto/create-usuario.dto';
-import { UpdateUsuarioDto } from './dto/update-usuario.dto';
+import { Usuario } from '../Entidades/entities/Usuario';
 
 @Injectable()
 export class UsuariosService {
   constructor(
     @InjectRepository(Usuario)
-    private readonly usuarioRepo: Repository<Usuario>,
+    private usuarioRepo: Repository<Usuario>,
   ) {}
-
-  create(dto: CreateUsuarioDto) {
-    const usuario = this.usuarioRepo.create(dto);
-    return this.usuarioRepo.save(usuario);
-  }
 
   findAll() {
     return this.usuarioRepo.find();
   }
 
-  async findOne(id: number) {
-    const usuario = await this.usuarioRepo.findOneBy({ id });
-    if (!usuario) throw new NotFoundException(`Usuario #${id} no encontrado`);
-    return usuario;
+  findOne(id: number) {
+    return this.usuarioRepo.findOneBy({ idusuario: id });
   }
 
-  async update(id: number, dto: UpdateUsuarioDto) {
-    await this.findOne(id);
-    await this.usuarioRepo.update(id, dto);
-    return this.findOne(id);
+  create(data: Partial<Usuario>) {
+    const usuario = this.usuarioRepo.create(data);
+    return this.usuarioRepo.save(usuario);
+  }
+
+  async update(id: number, data: Partial<Usuario>) {
+    await this.usuarioRepo.update(id, data);
+    return this.usuarioRepo.findOneBy({ idusuario: id });
   }
 
   async remove(id: number) {
-    await this.findOne(id);
     await this.usuarioRepo.delete(id);
-    return { message: `Usuario #${id} eliminado` };
+    return { message: 'Usuario eliminado' };
   }
 }
