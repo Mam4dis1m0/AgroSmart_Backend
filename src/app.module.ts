@@ -24,18 +24,20 @@ import { AuditoriaModule } from './Modules/auditoria/auditoria.module';
     ConfigModule.forRoot({ isGlobal: true }),
 
     // Conexión a Supabase
-    TypeOrmModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        type: 'postgres',
-        url: config.get<string>('DATABASE_URL'),
-       entities: [join(__dirname, '**/entities/*.js')],
-        synchronize: false,
-        ssl: { rejectUnauthorized: false },
-      }),
-    }),
-
+ TypeOrmModule.forRootAsync({
+  imports: [ConfigModule],
+  inject: [ConfigService],
+  useFactory: (config: ConfigService) => ({
+    type: 'postgres',
+    url: config.get<string>('DATABASE_URL'),
+    entities: [join(__dirname, '**/entities/*.js')],
+    synchronize: false,
+    ssl: { rejectUnauthorized: false },
+    extra: {
+      ssl: { rejectUnauthorized: false }  // ← agrega esto
+    },
+  }),
+}),
     UsuariosModule,
 
     AdministradorModule,
