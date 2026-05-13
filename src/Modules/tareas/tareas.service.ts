@@ -2,10 +2,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Tarea }           from '../../Entidades/entities/Tarea';
-import { Empleado }        from '../../Entidades/entities/Empleado';
+import { Tarea } from '../../Entidades/entities/Tarea';
+import { Empleado } from '../../Entidades/entities/Empleado';
 import { AsignacionTarea } from '../../Entidades/entities/AsignacionTarea';
-import { CreateTareaDto, UpdateTareaDto, AsignarTareaDto } from '../../dto/tarea.dto';
+import {
+  CreateTareaDto,
+  UpdateTareaDto,
+  AsignarTareaDto,
+} from '../../dto/tarea.dto';
 
 @Injectable()
 export class TareasService {
@@ -23,15 +27,15 @@ export class TareasService {
   // ── Sin cambios ───────────────────────────────────────────────────────────
 
   findAll() {
-   return this.repo.find({
-  relations: [
-    'idadmincreador',
-    'idcultivo',
-    'asignacionTareas',              // ✅ agrega esto
-    'asignacionTareas.idempleado',   // ✅ y esto para traer el empleado anidado
-  ],
-});
-  }
+  return this.repo
+    .createQueryBuilder('tarea')
+    .leftJoinAndSelect('tarea.idadmincreador', 'admin')
+    .leftJoinAndSelect('tarea.idcultivo', 'cultivo')
+    .leftJoinAndSelect('tarea.asignacionTareas', 'asig')
+    .leftJoinAndSelect('asig.idempleado', 'empleado')
+    .leftJoinAndSelect('empleado.idusuario2', 'usuario')
+    .getMany();
+}
 
   findOne(id: number) {
     return this.repo.findOne({
@@ -50,8 +54,12 @@ export class TareasService {
   create(dto: CreateTareaDto) {
     const entity = this.repo.create({
       ...dto,
-      idadmincreador: dto.idadmincreador ? { idusuario: dto.idadmincreador } as any : undefined,
-      idcultivo:      dto.idcultivo      ? { idcultivo: dto.idcultivo }      as any : undefined,
+      idadmincreador: dto.idadmincreador
+        ? ({ idusuario: dto.idadmincreador } as any)
+        : undefined,
+      idcultivo: dto.idcultivo
+        ? ({ idcultivo: dto.idcultivo } as any)
+        : undefined,
     });
     return this.repo.save(entity);
   }
@@ -60,8 +68,12 @@ export class TareasService {
     const entity = await this.repo.findOneByOrFail({ idtarea: id });
     Object.assign(entity, {
       ...dto,
-      idadmincreador: dto.idadmincreador ? { idusuario: dto.idadmincreador } as any : entity.idadmincreador,
-      idcultivo:      dto.idcultivo      ? { idcultivo: dto.idcultivo }      as any : entity.idcultivo,
+      idadmincreador: dto.idadmincreador
+        ? ({ idusuario: dto.idadmincreador } as any)
+        : entity.idadmincreador,
+      idcultivo: dto.idcultivo
+        ? ({ idcultivo: dto.idcultivo } as any)
+        : entity.idcultivo,
     });
     return this.repo.save(entity);
   }
@@ -73,7 +85,10 @@ export class TareasService {
 
   // ── asignar() ─────────────────────────────────────────────────────────────
 
-  async asignar(idTarea: number, dto: AsignarTareaDto): Promise<AsignacionTarea> {
+  async asignar(
+    idTarea: number,
+    dto: AsignarTareaDto,
+  ): Promise<AsignacionTarea> {
     // 1. Tarea existe?
     const tarea = await this.repo.findOne({ where: { idtarea: idTarea } });
     if (!tarea) throw new NotFoundException(`Tarea #${idTarea} no encontrada.`);
@@ -87,28 +102,30 @@ export class TareasService {
     }
 
     // 3. ¿Ya existe asignación para este par tarea+empleado?
-    let asignacion = await this.asignacionRepo.findOne({
-      where: {
-        idtarea:    { idtarea:   idTarea        },
-        idempleado: { idusuario: dto.idempleado },
-      },
-      relations: ['idtarea', 'idempleado', 'idadminasignador'],
-    });
+    let asignacion = await this.asignacionRepo
+      .createQueryBuilder('a')
+      .leftJoinAndSelect('a.idtarea', 'tarea')
+      .leftJoinAndSelect('a.idempleado', 'empleado')
+      .leftJoinAndSelect('a.idadminasignador', 'admin')
+      .where('tarea.idtarea = :idTarea', { idTarea })
+      .andWhere('empleado.idusuario = :idEmp', { idEmp: dto.idempleado })
+      .getOne();
 
     if (asignacion) {
       Object.assign(asignacion, {
-        estado:           dto.estado          ?? asignacion.estado,
-        pagoacordado:     dto.pagoacordado     ?? asignacion.pagoacordado,
-        fechaasignacion:  dto.fechaasignacion  ?? asignacion.fechaasignacion,
+        estado: dto.estado ?? asignacion.estado,
+        pagoacordado: dto.pagoacordado ?? asignacion.pagoacordado,
+        fechaasignacion: dto.fechaasignacion ?? asignacion.fechaasignacion,
         idadminasignador: { idusuario: dto.idadminasignador } as any,
       });
     } else {
       asignacion = this.asignacionRepo.create({
-        fechaasignacion:  dto.fechaasignacion ?? new Date().toISOString().split('T')[0],
-        estado:           dto.estado          ?? 'Asignado',
-        pagoacordado:     dto.pagoacordado     ?? null,
-        idtarea:          { idtarea:   idTarea             } as any,
-        idempleado:       { idusuario: dto.idempleado       } as any,
+        fechaasignacion:
+          dto.fechaasignacion ?? new Date().toISOString().split('T')[0],
+        estado: dto.estado ?? 'Asignado',
+        pagoacordado: dto.pagoacordado ?? null,
+        idtarea: { idtarea: idTarea } as any,
+        idempleado: { idusuario: dto.idempleado } as any,
         idadminasignador: { idusuario: dto.idadminasignador } as any,
       });
     }
@@ -120,7 +137,12 @@ export class TareasService {
     //    para garantizar AsignacionTarea (nunca null) y satisfacer TypeScript
     return this.asignacionRepo.findOneOrFail({
       where: { idasigtarea: saved.idasigtarea },
-      relations: ['idtarea', 'idempleado', 'idadminasignador'],
+      relations: [
+        'idtarea',
+        'idempleado',
+        'idempleado.idusuario2',
+        'idadminasignador',
+      ],
     });
   }
 }
