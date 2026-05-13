@@ -6,7 +6,7 @@ async function bootstrap() {
   
   app.enableCors({
     origin: 'http://localhost:5173', // puerto de Vite/React
-    methods: 'GET,POST,PUT,DELETE',
+    methods: 'GET,POST,PUT,PATCH,DELETE',
     credentials: true,
   });
 

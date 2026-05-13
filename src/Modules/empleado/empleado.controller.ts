@@ -2,7 +2,7 @@ import { Controller, Get, Post, Put, Delete, Param, Body } from '@nestjs/common'
 import { EmpleadoService } from './empleado.service';
 import { CreateEmpleadoDto, UpdateEmpleadoDto } from '../../dto/empleado.dto';
 
-@Controller('empleados')
+@Controller('api/v1/empleados')
 export class EmpleadoController {
   constructor(private readonly empleadoService: EmpleadoService) {}
 
