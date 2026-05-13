@@ -12,8 +12,12 @@ export class CultivosService {
   ) {}
 
   findAll() {
-    return this.repo.find({ relations: ['idlote', 'idadminsupervisor'] });
-  }
+  return this.repo
+    .createQueryBuilder('cultivo')
+    .leftJoinAndSelect('cultivo.idlote', 'lote')
+    .leftJoinAndSelect('cultivo.idadminsupervisor', 'admin')
+    .getMany();
+}
 
   findOne(id: number) {
     return this.repo.findOne({ where: { idcultivo: id }, relations: ['idlote', 'idadminsupervisor'] });

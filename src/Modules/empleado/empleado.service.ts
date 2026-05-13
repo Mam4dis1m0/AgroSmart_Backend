@@ -11,9 +11,13 @@ export class EmpleadoService {
   ) {}
 
   findAll() {
-    return this.repo.find({ relations: ['idusuario2'] });
-  }
-
+  return this.repo
+    .createQueryBuilder('empleado')
+    .leftJoinAndSelect('empleado.idusuario2', 'usuario')
+    .leftJoinAndSelect('empleado.asignacionTareas', 'asig')
+    .leftJoinAndSelect('asig.idtarea', 'tarea')
+    .getMany();
+} 
   findOne(id: number) {
     return this.repo.findOne({ where: { idusuario: id }, relations: ['idusuario2'] });
   }
