@@ -18,55 +18,41 @@ import { EmpleadoCosechaModule } from './Modules/empleado-cosecha/empleado-cosec
 import { NotificacionesModule } from './Modules/notificaciones/notificaciones.module';
 import { AuditoriaModule } from './Modules/auditoria/auditoria.module';
 import { ChatModule } from './Modules/Chat/chat.module';
+
 @Module({
   imports: [
-    // Carga el .env
     ConfigModule.forRoot({ isGlobal: true }),
 
-    // Conexión a Supabase
- TypeOrmModule.forRootAsync({
-  imports: [ConfigModule],
-  inject: [ConfigService],
-  useFactory: (config: ConfigService) => ({
-    type: 'postgres',
-    url: config.get<string>('DATABASE_URL'),
-    entities: [join(__dirname, '**/entities/*.js')],
-    synchronize: false,
-    ssl: { rejectUnauthorized: false },
-    extra: {
-      ssl: { rejectUnauthorized: false }  // ← agrega esto
-    },
-  }),
-}),
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        type: 'postgres',
+        url: config.get<string>('DATABASE_URL'),
+        entities: [join(__dirname, '**/entities/*.js')],
+        synchronize: false,
+        ssl: { rejectUnauthorized: false },
+        extra: {
+          ssl: { rejectUnauthorized: false },
+        },
+      }),
+    }),
+
     UsuariosModule,
-
     AdministradorModule,
-
     EmpleadoModule,
-
     LotesModule,
-
     PalmasModule,
-
     CultivosModule,
-
     ProduccionPalmaModule,
-
     InsumosModule,
-
     TareasModule,
-
     DetalleTareaModule,
-
     AsignacionTareaModule,
-
     EmpleadoCosechaModule,
-
     NotificacionesModule,
-
     AuditoriaModule,
-
     ChatModule,
   ],
 })
-export class AppModule {}
+export class AppModule {}  
