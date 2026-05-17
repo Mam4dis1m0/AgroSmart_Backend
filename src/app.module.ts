@@ -18,6 +18,7 @@ import { EmpleadoCosechaModule } from './Modules/empleado-cosecha/empleado-cosec
 import { NotificacionesModule } from './Modules/notificaciones/notificaciones.module';
 import { AuditoriaModule } from './Modules/auditoria/auditoria.module';
 import { ChatModule } from './Modules/Chat/chat.module';
+import { MailModule } from './mail/mail.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { ChatModule } from './Modules/Chat/chat.module';
     NotificacionesModule,
     AuditoriaModule,
     ChatModule,
+    MailModule,
   ],
 })
 export class AppModule {}  

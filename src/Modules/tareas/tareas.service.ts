@@ -1,4 +1,3 @@
-// src/tareas/tareas.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -10,6 +9,7 @@ import {
   UpdateTareaDto,
   AsignarTareaDto,
 } from '../../dto/tarea.dto';
+import { MailService } from '../../mail/mail.service'; // ← NUEVO
 
 @Injectable()
 export class TareasService {
@@ -22,20 +22,22 @@ export class TareasService {
 
     @InjectRepository(AsignacionTarea)
     private asignacionRepo: Repository<AsignacionTarea>,
+
+    private mailService: MailService, // ← NUEVO
   ) {}
 
   // ── Sin cambios ───────────────────────────────────────────────────────────
 
   findAll() {
-  return this.repo
-    .createQueryBuilder('tarea')
-    .leftJoinAndSelect('tarea.idadmincreador', 'admin')
-    .leftJoinAndSelect('tarea.idcultivo', 'cultivo')
-    .leftJoinAndSelect('tarea.asignacionTareas', 'asig')
-    .leftJoinAndSelect('asig.idempleado', 'empleado')
-    .leftJoinAndSelect('empleado.idusuario2', 'usuario')
-    .getMany();
-}
+    return this.repo
+      .createQueryBuilder('tarea')
+      .leftJoinAndSelect('tarea.idadmincreador', 'admin')
+      .leftJoinAndSelect('tarea.idcultivo', 'cultivo')
+      .leftJoinAndSelect('tarea.asignacionTareas', 'asig')
+      .leftJoinAndSelect('asig.idempleado', 'empleado')
+      .leftJoinAndSelect('empleado.idusuario2', 'usuario')
+      .getMany();
+  }
 
   findOne(id: number) {
     return this.repo.findOne({
@@ -89,19 +91,17 @@ export class TareasService {
     idTarea: number,
     dto: AsignarTareaDto,
   ): Promise<AsignacionTarea> {
-    // 1. Tarea existe?
     const tarea = await this.repo.findOne({ where: { idtarea: idTarea } });
     if (!tarea) throw new NotFoundException(`Tarea #${idTarea} no encontrada.`);
 
-    // 2. Empleado existe?
     const empleado = await this.empleadoRepo.findOne({
       where: { idusuario: dto.idempleado },
+      relations: ['idusuario2'], // ← para obtener el email del empleado
     });
     if (!empleado) {
       throw new NotFoundException(`Empleado #${dto.idempleado} no encontrado.`);
     }
 
-    // 3. ¿Ya existe asignación para este par tarea+empleado?
     let asignacion = await this.asignacionRepo
       .createQueryBuilder('a')
       .leftJoinAndSelect('a.idtarea', 'tarea')
@@ -130,11 +130,18 @@ export class TareasService {
       });
     }
 
-    // 4. Persistir
     const saved = await this.asignacionRepo.save(asignacion);
 
-    // ── CORRECCIÓN: findOne puede retornar null, usamos findOneOrFail
-    //    para garantizar AsignacionTarea (nunca null) y satisfacer TypeScript
+    // ── NUEVO: enviar email al empleado ───────────────────────────────────
+    const emailEmpleado = empleado.idusuario2?.email ?? '';
+    if (emailEmpleado) {
+      await this.mailService.notificarTareaAsignada(
+        emailEmpleado,
+        tarea.tipoactividad ?? 'Sin nombre',
+      );
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     return this.asignacionRepo.findOneOrFail({
       where: { idasigtarea: saved.idasigtarea },
       relations: [
@@ -144,5 +151,42 @@ export class TareasService {
         'idadminasignador',
       ],
     });
+  }
+
+  // ── completar() ───────────────────────────────────────────────────────────
+
+  async completar(idAsignacion: number): Promise<AsignacionTarea> {
+    const asignacion = await this.asignacionRepo.findOneOrFail({
+      where: { idasigtarea: idAsignacion },
+      relations: [
+        'idtarea',
+        'idempleado',
+        'idempleado.idusuario2',
+        'idadminasignador',
+        'idadminasignador.idusuario2', // ← carga el Usuario del admin
+      ],
+    });
+
+    asignacion.estado = 'Completado';
+    await this.asignacionRepo.save(asignacion);
+
+  const emailAdmin = asignacion.idadminasignador?.idusuario2?.email ?? '';
+    const nombreEmpleado =
+      asignacion.idempleado?.idusuario2?.primernombre ?? 'Empleado';
+    const nombreTarea = asignacion.idtarea?.tipoactividad ?? 'Sin nombre';
+
+    console.log('Email admin:', emailAdmin); // ← para verificar en terminal
+    console.log('Nombre empleado:', nombreEmpleado);
+    console.log('Nombre tarea:', nombreTarea);
+
+    if (emailAdmin) {
+      await this.mailService.notificarTareaCompletada(
+        emailAdmin,
+        nombreTarea,
+        nombreEmpleado,
+      );
+    }
+
+    return asignacion;
   }
 }

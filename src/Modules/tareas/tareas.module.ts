@@ -1,4 +1,3 @@
-// src/tareas/tareas.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TareasService }    from './tareas.service';
@@ -6,14 +5,16 @@ import { TareasController } from './tareas.controller';
 import { Tarea }            from '../../Entidades/entities/Tarea';
 import { Empleado }         from '../../Entidades/entities/Empleado';
 import { AsignacionTarea }  from '../../Entidades/entities/AsignacionTarea';
+import { MailModule }       from '../../mail/mail.module'; // ← NUEVO
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Tarea,
-      Empleado,         // para validar existencia del empleado en asignar()
-      AsignacionTarea,  // para crear/actualizar el registro de asignación
+      Empleado,
+      AsignacionTarea,
     ]),
+    MailModule, // ← NUEVO
   ],
   controllers: [TareasController],
   providers: [TareasService],
