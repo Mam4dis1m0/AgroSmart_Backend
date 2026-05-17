@@ -10,9 +10,12 @@ export class LotesService {
     private repo: Repository<Lote>,
   ) {}
 
-  findAll() {
-    return this.repo.find();
-  }
+ findAll() {
+  return this.repo
+    .createQueryBuilder('lote')
+    .leftJoinAndSelect('lote.cultivos', 'cultivo')
+    .getMany();
+}
 
   findOne(id: number) {
     return this.repo.findOneBy({ idlote: id });
