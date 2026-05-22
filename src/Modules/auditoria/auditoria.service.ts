@@ -1,35 +1,48 @@
+// src/Modules/auditoria/auditoria.service.ts
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Auditoria } from '../../Entidades/entities/Auditoria';
+import { CacheService } from '../../common/cache.service';
+import { OfflineQueueService } from '../../common/offline-queue.service';
+import { SyncService } from '../../common/sync.service';
+import { BaseOfflineService } from '../../common/base-offline.service';
 
 @Injectable()
-export class AuditoriaService {
+export class AuditoriaService extends BaseOfflineService<Auditoria> {
   constructor(
-    @InjectRepository(Auditoria)
-    private repo: Repository<Auditoria>,
-  ) {}
+    @InjectRepository(Auditoria) repo: Repository<Auditoria>,
+    cache: CacheService,
+    offlineQueue: OfflineQueueService,
+    sync: SyncService,
+  ) {
+    super(repo, cache, offlineQueue, sync, 'auditoria', 'idauditoria');
+  }
 
   findAll() {
-    return this.repo.find({ order: { fecha: 'DESC' } });
+    return this.findAllOffline(() =>
+      this.repo.find({ order: { fecha: 'DESC' } }),
+    );
   }
 
   findOne(id: number) {
-    return this.repo.findOneBy({ idauditoria: id });
+    return this.findOneOffline(id, () => this.repo.findOneBy({ idauditoria: id }));
   }
 
-  findByTabla(tabla: string) {
+  async findByTabla(tabla: string) {
+    const online = await this.sync.isOnline();
+    if (!online) {
+      const all = this.cache.get<Auditoria[]>(this.cacheKeyAll()) ?? [];
+      return all.filter((a: any) => a.tablaNombre === tabla);
+    }
     return this.repo.find({ where: { tablaNombre: tabla }, order: { fecha: 'DESC' } });
   }
 
   create(data: Partial<Auditoria>) {
-    return this.repo.save(this.repo.create(data));
+    return this.createOffline(data, () => this.repo.save(this.repo.create(data)));
   }
 
-  // La auditoría generalmente no se actualiza ni elimina,
-  // pero se deja por completitud
-  async remove(id: number) {
-    await this.repo.delete(id);
-    return { message: 'Registro de auditoría eliminado' };
+  remove(id: number) {
+    return this.removeOffline(id, () => this.repo.delete(id).then(() => {}));
   }
 }

@@ -20,6 +20,6 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
-    "strictPropertyInitialization": false    // ← agrega esta línea
+    "strictPropertyInitialization": false
   }
 }
