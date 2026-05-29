@@ -19,11 +19,16 @@ import { MailService } from './mail.service';
           },
         },
         defaults: {
-          from: `"App Tareas" <${config.get('MAIL_USER')}>`,
+          from: `"AgroSmart" <${config.get('MAIL_USER')}>`,
+          // Headers que Gmail usa para clasificar como importante
+          headers: {
+            'X-Priority': '1',
+            'X-MSMail-Priority': 'High',
+            'Importance': 'High',
+          },
         },
       }),
     }),
-    MailModule,
   ],
   providers: [MailService],
   exports: [MailService],

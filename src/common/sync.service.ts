@@ -12,6 +12,13 @@ export class SyncService implements OnModuleInit {
   private syncing = false;
   private _online = false;
 
+  // ── NUEVO: caché del estado de conexión ───────────────────────────────────
+  // Evita hacer SELECT 1 en CADA request (lo que causaba que las tareas
+  // se quedaran "pensando" por varios segundos o timeoutearan en el front).
+  // El estado se refresca cada CHECK_INTERVAL_MS milisegundos.
+  private _lastCheck = 0;
+  private readonly CHECK_INTERVAL_MS = 10_000; // revalida cada 10 segundos
+
   constructor(
     @InjectDataSource() private dataSource: DataSource,
     private queue: OfflineQueueService,
@@ -19,8 +26,8 @@ export class SyncService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    // Al arrancar, intenta conectar sin bloquear
     this._online = await this.checkConnection();
+    this._lastCheck = Date.now();
     if (this._online) {
       this.logger.log('✅ Conectado a Supabase — modo online');
     } else {
@@ -29,23 +36,44 @@ export class SyncService implements OnModuleInit {
     }
   }
 
-  // ── Verifica si hay conexión real a la BD ─────────────────────────────────
+  // ── checkConnection: hace el SELECT 1 real ────────────────────────────────
   private async checkConnection(): Promise<boolean> {
     try {
-      // Si TypeORM no logró conectar, dataSource.isInitialized es false
       if (!this.dataSource.isInitialized) {
         await this.dataSource.initialize();
       }
-      await this.dataSource.query('SELECT 1');
+      // Timeout de 3s para que no bloquee los requests si Supabase tarda
+      await Promise.race([
+        this.dataSource.query('SELECT 1'),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), 3000),
+        ),
+      ]);
       return true;
     } catch {
       return false;
     }
   }
 
-  // ── Método público que usan los servicios ─────────────────────────────────
+  // ── isOnline: versión con caché — NO bloquea cada request ─────────────────
   async isOnline(): Promise<boolean> {
-    this._online = await this.checkConnection();
+    const now = Date.now();
+    // Si ya chequeamos hace menos de CHECK_INTERVAL_MS, devuelve el valor cacheado
+    if (now - this._lastCheck < this.CHECK_INTERVAL_MS) {
+      return this._online;
+    }
+    // Si pasaron más de 10s, revalida en segundo plano sin bloquear
+    this._lastCheck = now;
+    this.checkConnection().then(online => {
+      if (online !== this._online) {
+        this._online = online;
+        this.logger.log(
+          online
+            ? '✅ Conexión restaurada — modo online'
+            : '📴 Conexión perdida — modo offline',
+        );
+      }
+    });
     return this._online;
   }
 
@@ -57,7 +85,11 @@ export class SyncService implements OnModuleInit {
     const pending = this.queue.getAll();
     if (pending.length === 0) return;
 
-    const online = await this.isOnline();
+    // Para el cron SÍ hacemos check real, no la versión cacheada
+    const online = await this.checkConnection();
+    this._online = online;
+    this._lastCheck = Date.now();
+
     if (!online) {
       this.logger.log(`📴 Sin internet — ${pending.length} operaciones en cola esperando`);
       return;
@@ -73,8 +105,6 @@ export class SyncService implements OnModuleInit {
         this.logger.log(`  ✅ ${op.operation} en ${op.entity} — sincronizado`);
       } catch (err) {
         const msg: string = (err as any)?.message ?? String(err);
-        // Errores irrecuperables: dato corrupto que nunca va a funcionar.
-        // Se elimina de la cola para no bloquear otras operaciones.
         const irrecuperable =
           msg.includes('out of range') ||
           msg.includes('invalid input syntax') ||
@@ -84,7 +114,7 @@ export class SyncService implements OnModuleInit {
         if (irrecuperable) {
           this.queue.remove(op.id);
           this.logger.error(
-            `  ❌ [DESCARTADO] ${op.id} — error irrecuperable, eliminado de la cola: ${msg}`,
+            `  ❌ [DESCARTADO] ${op.id} — error irrecuperable: ${msg}`,
           );
         } else {
           this.logger.error(`  ❌ ${op.id} falló (se reintentará): ${msg}`);
@@ -102,11 +132,10 @@ export class SyncService implements OnModuleInit {
     this.syncing = false;
   }
 
-  // ── Ejecuta una operación de la cola en Supabase ──────────────────────────
+  // ── executeOperation ──────────────────────────────────────────────────────
   private async executeOperation(op: any) {
     const { entity, operation, data } = op;
 
-    // ── Caso especial: registro de usuario (usuario + empleado/admin) ─────────
     if (entity === '_registro_usuario') {
       await this.syncRegistroUsuario(data);
       return;
@@ -121,7 +150,6 @@ export class SyncService implements OnModuleInit {
       return;
     }
 
-    // Filtra campos internos y PKs temporales antes de enviar
     const cleanData = Object.fromEntries(
       Object.entries(data).filter(([k, v]) => {
         if (k.startsWith('_')) return false;
@@ -142,7 +170,6 @@ export class SyncService implements OnModuleInit {
       return;
     }
 
-    // UPDATE: ON CONFLICT usando la primera columna como PK
     const pk = Object.keys(cleanData)[0];
     const updates = Object.keys(cleanData)
       .map((k, i) => `${k} = $${i + 1}`)
@@ -156,11 +183,10 @@ export class SyncService implements OnModuleInit {
     );
   }
 
-  // ── Sincroniza un registro de usuario completo (usuario + rol) ────────────
+  // ── syncRegistroUsuario ───────────────────────────────────────────────────
   private async syncRegistroUsuario(data: any) {
     const { userData, role, montoporhora, montoporjornal, montomensual } = data;
 
-    // Limpia campos internos del userData
     const cleanUser = Object.fromEntries(
       Object.entries(userData as Record<string, unknown>).filter(([k, v]) => {
         if (k.startsWith('_')) return false;
@@ -173,7 +199,6 @@ export class SyncService implements OnModuleInit {
     const vals = Object.values(cleanUser);
     const placeholders = vals.map((_, i) => `$${i + 1}`).join(', ');
 
-    // 1. Inserta en tabla usuario — si ya existe (mismo email) hace UPDATE
     const result = await this.dataSource.query(
       `INSERT INTO usuario (${cols})
        VALUES (${placeholders})
@@ -184,7 +209,6 @@ export class SyncService implements OnModuleInit {
     const idusuario = result[0]?.idusuario;
     if (!idusuario) throw new Error('No se pudo obtener el idusuario tras insertar');
 
-    // 2. Inserta en tabla de rol correspondiente
     if (role === 'admin') {
       await this.dataSource.query(
         `INSERT INTO administrador (idusuario, montomensual)
