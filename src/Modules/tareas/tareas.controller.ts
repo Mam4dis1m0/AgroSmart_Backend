@@ -8,7 +8,7 @@ import {
   Delete,
   Param,
   Body,
-  UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { TareasService } from './tareas.service';
 import { CreateTareaDto, UpdateTareaDto, AsignarTareaDto } from '../../dto/tarea.dto';
@@ -37,19 +37,17 @@ export class TareasController {
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) { return this.tareasService.remove(+id); }
+  remove(@Param('id') id: string) {
+    const idNum = parseInt(id, 10);
+    if (isNaN(idNum)) throw new BadRequestException('ID inválido');
+    return this.tareasService.remove(idNum);
+  }
 
   @Patch(':id/asignar')
   asignar(@Param('id') id: string, @Body() dto: AsignarTareaDto) {
     return this.tareasService.asignar(+id, dto);
   }
 
-  // ── NUEVO ─────────────────────────────────────────────────────────────────
-  /**
-   * PATCH /api/v1/tareas/:id/completar
-   * Cambia el estado de la asignación a "Completado"
-   * y le envía un email al admin avisando que terminó.
-   */
   @Patch(':id/completar')
   completar(@Param('id') id: string) {
     return this.tareasService.completar(+id);

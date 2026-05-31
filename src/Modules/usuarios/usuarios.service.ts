@@ -257,7 +257,8 @@ export class UsuariosService extends BaseOfflineService<Usuario> {
       const role = esAdmin ? 'admin' : 'empleado';
 
       // FIX #1: priorizar foto guardada en BD, luego la de Google
-      const fotoperfil = (usuario as any).fotoperfil ?? picture ?? null;
+      const cachedPrev = this.cache.get<any>(`usuario_login_${email}`);
+      const fotoperfil = picture ?? cachedPrev?.fotoperfil ?? null;
 
       this.cache.set(`usuario_login_${email}`, {
         idusuario:    usuario.idusuario,

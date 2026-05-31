@@ -1,5 +1,4 @@
 // src/Modules/tareas/tareas.service.ts
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Tarea } from '../../Entidades/entities/Tarea';
@@ -11,6 +10,7 @@ import { CacheService } from '../../common/cache.service';
 import { OfflineQueueService } from '../../common/offline-queue.service';
 import { SyncService } from '../../common/sync.service';
 
+import { Injectable, NotFoundException, Logger, BadRequestException } from '@nestjs/common';
 @Injectable()
 export class TareasService {
   private readonly logger = new Logger(TareasService.name);
@@ -27,32 +27,26 @@ export class TareasService {
 
   // ── findAll ───────────────────────────────────────────────────────────────
   async findAll() {
-    const CACHE_KEY = 'tareas_all';
-    const online = await this.sync.isOnline();
+  const CACHE_KEY = 'tareas_all';
+  const online = await this.sync.isOnline();
 
-    if (!online) {
-      this.logger.warn('📴 Sin internet — devolviendo tareas desde caché');
-      return this.cache.get<Tarea[]>(CACHE_KEY) ?? [];
-    }
-
-    const tareas = await this.repo
-      .createQueryBuilder('tarea')
-      .leftJoinAndSelect('tarea.idadmincreador', 'admin')
-      .leftJoinAndSelect('tarea.idcultivo', 'cultivo')
-      .leftJoinAndSelect('tarea.asignacionTareas', 'asig')
-      .leftJoinAndSelect('asig.idempleado', 'empleado')
-      .leftJoinAndSelect('empleado.idusuario2', 'usuario')
-      .getMany();
-
-    // Mezcla tareas de Supabase con pendientes offline del caché
-    const pending = (this.cache.get<any[]>(CACHE_KEY) ?? []).filter(t => t._offline === true);
-    const supabaseIds = new Set(tareas.map(t => String(t.idtarea)));
-    const soloOffline = pending.filter(t => !supabaseIds.has(String(t.idtarea)));
-    const merged = [...tareas, ...soloOffline];
-
-    this.cache.set(CACHE_KEY, merged);
-    return merged;
+  if (!online) {
+    this.logger.warn('📴 Sin internet — devolviendo tareas desde caché');
+    return this.cache.get<Tarea[]>(CACHE_KEY) ?? [];
   }
+
+  const tareas = await this.repo
+    .createQueryBuilder('tarea')
+    .leftJoinAndSelect('tarea.idadmincreador', 'admin')
+    .leftJoinAndSelect('tarea.idcultivo', 'cultivo')
+    .leftJoinAndSelect('tarea.asignacionTareas', 'asig')
+    .leftJoinAndSelect('asig.idempleado', 'empleado')
+    .leftJoinAndSelect('empleado.idusuario2', 'usuario')
+    .getMany();
+
+  this.cache.set(CACHE_KEY, tareas);
+return tareas;
+}
 
   // ── findOne ───────────────────────────────────────────────────────────────
   async findOne(id: number) {
@@ -104,33 +98,68 @@ export class TareasService {
       return saved;
     }
 
-    // ── Modo offline ──────────────────────────────────────────────────────
-    const tempId = `offline_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    // ── Modo offline ────────────────────────────────────────────────────────
+    const tempId = -(Date.now() % 1_000_000);
 
     let _nombreEmpleado: string | null = null;
     if ((dto as any).idempleado) {
       const empleados: any[] = this.cache.get<any[]>('empleado_all') ?? [];
       const emp = empleados.find((e: any) => e.idusuario === (dto as any).idempleado);
       if (emp?.idusuario2) {
-        _nombreEmpleado = [emp.idusuario2.primernombre, emp.idusuario2.primerapellido].filter(Boolean).join(' ');
+        _nombreEmpleado = [emp.idusuario2.primernombre, emp.idusuario2.primerapellido]
+          .filter(Boolean).join(' ');
       } else if (emp?.primernombre) {
-        _nombreEmpleado = [emp.primernombre, emp.primerapellido].filter(Boolean).join(' ');
+        _nombreEmpleado = [emp.primernombre, emp.primerapellido]
+          .filter(Boolean).join(' ');
       }
     }
 
-    const tempEntity = { idtarea: tempId, ...dto, _offline: true, _pendiente: 'CREATE', _nombreEmpleado };
+    const tempEntity = {
+      idtarea:         tempId,
+      tipoactividad:   dto.tipoactividad,
+      fechaprogramada: (dto as any).fechaprogramada ?? null,
+      estado:          (dto as any).estado          ?? 'Pendiente',
+      esrecurrente:    (dto as any).esrecurrente    ?? 'No',
+      costototal:      (dto as any).costototal       ?? 0,
+      asignacionTareas: _nombreEmpleado ? [{
+        idasigtarea: -1,
+        estado: 'Asignado',
+        idempleado: {
+          idusuario: (dto as any).idempleado ?? 0,
+          idusuario2: {
+            primernombre:   _nombreEmpleado.split(' ')[0] ?? '',
+            primerapellido: _nombreEmpleado.split(' ').slice(1).join(' ') ?? '',
+          },
+        },
+      }] : [],
+      _offline:        true,
+      _pendiente:      'CREATE',
+      _nombreEmpleado,
+    };
+
     const all = this.cache.get<any[]>('tareas_all') ?? [];
     this.cache.set('tareas_all', [...all, tempEntity]);
 
-    const dtoSinCamposExtra = Object.fromEntries(Object.entries(dto).filter(([k]) => k !== 'idempleado'));
-    this.offlineQueue.add('tarea', 'CREATE', dtoSinCamposExtra);
-    this.logger.log(`📥 Tarea guardada offline (id temporal: ${tempId})`);
+    const dtoSinCamposExtra = Object.fromEntries(
+  Object.entries(dto as any).filter(([k]) => k !== 'idempleado')
+);
+this.offlineQueue.add('tarea', 'CREATE', { 
+  ...dtoSinCamposExtra, 
+  idtarea: tempId  // ← AGREGAR ESTO
+});
 
-    return { ...tempEntity, _mensaje: 'Guardado localmente. Se subirá a Supabase cuando haya internet.' };
+    return {
+      ...tempEntity,
+      _mensaje: 'Guardado localmente. Se subirá a Supabase cuando haya internet.',
+    };
   }
 
   // ── update ────────────────────────────────────────────────────────────────
   async update(id: number, dto: UpdateTareaDto) {
+
+  if (!id || isNaN(id) || id < 0) {
+    throw new BadRequestException('No se puede editar una tarea que aún no se ha sincronizado.');
+  }
     const online = await this.sync.isOnline();
 
     if (online) {
@@ -159,24 +188,32 @@ export class TareasService {
 
   // ── remove ────────────────────────────────────────────────────────────────
   async remove(id: number) {
-    const online = await this.sync.isOnline();
+  if (!id || isNaN(id)) throw new BadRequestException('ID de tarea inválido');
 
-    if (online) {
-      await this.repo.delete(id);
-      this.cache.delete(`tareas_${id}`);
-      const all = (this.cache.get<any[]>('tareas_all') ?? []).filter(t => t.idtarea !== id);
-      this.cache.set('tareas_all', all);
-      return { message: 'Tarea eliminada' };
-    }
+  // ── Siempre limpia del caché primero ─────────────────────────────────────
+  this.cache.delete(`tareas_${id}`);
+  const allSinEsta = (this.cache.get<any[]>('tareas_all') ?? [])
+    .filter(t => t.idtarea !== id);
+  this.cache.set('tareas_all', allSinEsta);
 
-    this.cache.delete(`tareas_${id}`);
-    const all = (this.cache.get<any[]>('tareas_all') ?? []).filter(t => t.idtarea !== id);
-    this.cache.set('tareas_all', all);
-    this.offlineQueue.add('tarea', 'DELETE', { idtarea: id });
-    this.logger.log(`📥 Tarea #${id} marcada para eliminar offline`);
-    return { message: 'Eliminado localmente. Se borrará de Supabase cuando haya internet.' };
+  const online = await this.sync.isOnline();
+
+  if (online) {
+    // Si es id negativo (offline temporal) no hacer DELETE en BD
+    if (id < 0) return { message: 'Tarea offline eliminada' };
+
+    await this.repo.delete(id);
+    return { message: 'Tarea eliminada' };
   }
 
+  // Sin internet: encola solo si es id real (positivo)
+  if (id > 0) {
+    this.offlineQueue.add('tarea', 'DELETE', { idtarea: id });
+    this.logger.log(`📥 Tarea #${id} marcada para eliminar offline`);
+  }
+
+  return { message: 'Eliminado localmente. Se borrará de Supabase cuando haya internet.' };
+}
   // ── asignar ───────────────────────────────────────────────────────────────
   async asignar(idTarea: number, dto: AsignarTareaDto): Promise<AsignacionTarea | any> {
     const online = await this.sync.isOnline();
@@ -220,10 +257,11 @@ export class TareasService {
 
       const saved = await this.asignacionRepo.save(asignacion);
 
-      // Enviar email al empleado
       const emailEmpleado = empleado.idusuario2?.email ?? '';
       if (emailEmpleado) {
-        await this.mailService.notificarTareaAsignada(emailEmpleado, tarea.tipoactividad ?? 'Sin nombre');
+        const nombreTarea = tarea.tipoactividad?.trim() || `Tarea #${idTarea}`;
+        this.logger.log(`📧 Enviando email a ${emailEmpleado} — tarea: "${nombreTarea}"`);
+        await this.mailService.notificarTareaAsignada(emailEmpleado, nombreTarea);
       }
 
       return this.asignacionRepo.findOneOrFail({
@@ -232,7 +270,7 @@ export class TareasService {
       });
     }
 
-    // ── Modo offline ──────────────────────────────────────────────────────
+    // ── Modo offline ────────────────────────────────────────────────────────
     let nombreEmpleado = '—';
     const empleadosCache: any[] = this.cache.get<any[]>('empleado_all') ?? [];
     const empCache = empleadosCache.find((e: any) => e.idusuario === dto.idempleado);
@@ -249,25 +287,46 @@ export class TareasService {
         _offline: true,
         idempleado: {
           idusuario: dto.idempleado,
-          idusuario2: empCache?.idusuario2 ?? { primernombre: empCache?.primernombre ?? '—', primerapellido: empCache?.primerapellido ?? '' },
+          idusuario2: empCache?.idusuario2 ?? {
+            primernombre:   empCache?.primernombre   ?? '—',
+            primerapellido: empCache?.primerapellido ?? '',
+          },
         },
         estado:          dto.estado          ?? 'Asignado',
         pagoacordado:    dto.pagoacordado    ?? null,
         fechaasignacion: dto.fechaasignacion ?? new Date().toISOString().split('T')[0],
       };
-      return { ...t, _nombreEmpleado: nombreEmpleado, asignacionTareas: [...(t.asignacionTareas ?? []), asigSimulada] };
+      return {
+        ...t,
+        _nombreEmpleado: nombreEmpleado,
+        asignacionTareas: [...(t.asignacionTareas ?? []), asigSimulada],
+      };
     });
     this.cache.set('tareas_all', tareasActualizadas);
 
     this.offlineQueue.add('asignacion_tarea', 'CREATE', { idtarea: idTarea, ...dto });
     this.logger.log(`📥 Asignación tarea #${idTarea} encolada offline — empleado: ${nombreEmpleado}`);
 
+    const emailEmpleado = empCache?.idusuario2?.email ?? empCache?.email ?? '';
+    if (emailEmpleado) {
+      const tareaCache = tareasAll.find((t: any) => String(t.idtarea) === String(idTarea));
+      const nombreTarea = tareaCache?.tipoactividad?.trim() || `Tarea #${idTarea}`;
+      this.offlineQueue.add('_email_pendiente', 'CREATE', {
+        tipo: 'tareaAsignada',
+        emailDestino: emailEmpleado,
+        nombreTarea,
+      });
+      this.logger.log(`📧 Email pendiente encolado para ${emailEmpleado} — tarea: "${nombreTarea}"`);
+    }
+
     return {
-      _offline: true, idtarea: idTarea, ...dto,
+      _offline:        true,
+      idtarea:         idTarea,
+      ...dto,
       estado:          dto.estado          ?? 'Asignado',
       fechaasignacion: dto.fechaasignacion ?? new Date().toISOString().split('T')[0],
       _nombreEmpleado: nombreEmpleado,
-      _mensaje: 'Asignación guardada localmente. Se subirá cuando haya internet.',
+      _mensaje:        'Asignación guardada localmente. Se subirá cuando haya internet.',
     };
   }
 
@@ -283,7 +342,7 @@ export class TareasService {
 
     const emailAdmin     = asignacion.idadminasignador?.idusuario2?.email ?? '';
     const nombreEmpleado = asignacion.idempleado?.idusuario2?.primernombre ?? 'Empleado';
-    const nombreTarea    = asignacion.idtarea?.tipoactividad ?? 'Sin nombre';
+    const nombreTarea    = asignacion.idtarea?.tipoactividad?.trim() || `Tarea #${idAsignacion}`;
 
     if (emailAdmin) {
       await this.mailService.notificarTareaCompletada(emailAdmin, nombreTarea, nombreEmpleado);
