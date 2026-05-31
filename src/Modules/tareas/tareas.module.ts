@@ -7,10 +7,12 @@ import { Empleado }        from '../../Entidades/entities/Empleado';
 import { AsignacionTarea } from '../../Entidades/entities/AsignacionTarea';
 import { MailModule }      from '../../mail/mail.module';
 import { CommonModule }    from '../../common/common.module';
+import { Insumo } from '../../Entidades/entities/Insumo';
+import { DetalleTarea } from '../../Entidades/entities/DetalleTarea';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Tarea, Empleado, AsignacionTarea]),
+    TypeOrmModule.forFeature([Tarea, Empleado, AsignacionTarea,Insumo,AsignacionTarea ]),
     MailModule,
     CommonModule,
   ],
