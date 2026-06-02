@@ -13,8 +13,7 @@ export class SyncService implements OnModuleInit {
   private syncing = false;
   private _online = false;
   private _lastCheck = 0;
-
-  // FIX 1: reducido de 30s a 10s para detectar reconexión más rápido
+  private reintentos = new Map<string, number>(); // ← agrega esta línea
   private readonly CHECK_INTERVAL_MS = 10_000;
 
   constructor(
@@ -30,33 +29,33 @@ export class SyncService implements OnModuleInit {
 
     if (this._online) {
       this.logger.log('✅ Conectado a Supabase — modo online');
-
-      // FIX 2: precarga caché de empleados al arrancar para que
-      // el modal de asignar tarea siempre tenga datos disponibles
-      try {
-        const empleados = await this.dataSource.query(`
-          SELECT e.idusuario, e.montoporhora, e.montoporjornal,
-                 u.primernombre, u.primerapellido, u.email,
-                 json_build_object(
-                   'primernombre', u.primernombre,
-                   'primerapellido', u.primerapellido,
-                   'email', u.email
-                 ) AS idusuario2
-          FROM empleado e
-          JOIN usuario u ON e.idusuario = u.idusuario
-        `);
-        this.cache.set('empleado_all', empleados);
-        this.logger.log(`✅ Caché de empleados precargada (${empleados.length} empleados)`);
-      } catch (err) {
-        this.logger.warn(`⚠️ No se pudo precargar caché de empleados: ${err.message}`);
-      }
+      await this.precargarEmpleados();
     } else {
       this.logger.warn('📴 Sin conexión a Supabase — modo offline activado');
       this.logger.warn('   Los datos se guardarán en caché local (.cache/)');
     }
   }
 
-  // FIX 1: timeout reducido de 8s a 4s para no bloquear requests
+  private async precargarEmpleados() {
+    try {
+      const empleados = await this.dataSource.query(`
+        SELECT e.idusuario, e.montoporhora, e.montoporjornal,
+               u.primernombre, u.primerapellido, u.email,
+               json_build_object(
+                 'primernombre', u.primernombre,
+                 'primerapellido', u.primerapellido,
+                 'email', u.email
+               ) AS idusuario2
+        FROM empleado e
+        JOIN usuario u ON e.idusuario = u.idusuario
+      `);
+      this.cache.set('empleado_all', empleados);
+      this.logger.log(`✅ Caché de empleados precargada (${empleados.length} empleados)`);
+    } catch (err) {
+      this.logger.warn(`⚠️ No se pudo precargar caché de empleados: ${err.message}`);
+    }
+  }
+
   private async checkConnection(): Promise<boolean> {
     try {
       if (!this.dataSource.isInitialized) {
@@ -88,31 +87,13 @@ export class SyncService implements OnModuleInit {
             ? '✅ Conexión restaurada — modo online'
             : '📴 Conexión perdida — modo offline',
         );
-        // FIX 2: cuando vuelve online, refresca caché de empleados
-        if (online) {
-          this.dataSource.query(`
-            SELECT e.idusuario, e.montoporhora, e.montoporjornal,
-                   u.primernombre, u.primerapellido, u.email,
-                   json_build_object(
-                     'primernombre', u.primernombre,
-                     'primerapellido', u.primerapellido,
-                     'email', u.email
-                   ) AS idusuario2
-            FROM empleado e
-            JOIN usuario u ON e.idusuario = u.idusuario
-          `).then(empleados => {
-            this.cache.set('empleado_all', empleados);
-            this.logger.log(`✅ Caché de empleados refrescada (${empleados.length} empleados)`);
-          }).catch(err => {
-            this.logger.warn(`⚠️ No se pudo refrescar caché de empleados: ${err.message}`);
-          });
-        }
+        if (online) this.precargarEmpleados();
       }
     });
     return this._online;
   }
 
-  @Cron(CronExpression.EVERY_30_SECONDS)
+ @Cron(CronExpression.EVERY_30_SECONDS)
 async uploadPending() {
   if (this.syncing) return;
 
@@ -128,11 +109,11 @@ async uploadPending() {
   this.syncing = true;
   this.logger.log(`🔄 Sincronizando ${pending.length} operación(es) pendiente(s)...`);
 
-  // ── Orden de prioridad: primero tareas, luego asignaciones, luego emails ──
-  const orden = ['tarea', 'asignacion_tarea', '_email_pendiente', '_registro_usuario'];
+  const orden = ['tarea', 'asignacion_tarea', 'detalle_tarea', '_email_pendiente', '_registro_usuario'];
   const sorted = [
     ...pending.filter(op => op.entity === 'tarea'),
     ...pending.filter(op => op.entity === 'asignacion_tarea'),
+    ...pending.filter(op => op.entity === 'detalle_tarea'),
     ...pending.filter(op => op.entity === '_email_pendiente'),
     ...pending.filter(op => op.entity === '_registro_usuario'),
     ...pending.filter(op => !orden.includes(op.entity)),
@@ -142,6 +123,7 @@ async uploadPending() {
     try {
       await this.executeOperation(op);
       this.queue.remove(op.id);
+      this.reintentos.delete(op.id); // ← limpia al sincronizar exitosamente
       this.logger.log(`  ✅ ${op.operation} en ${op.entity} — sincronizado`);
     } catch (err) {
       const msg: string = (err as any)?.message ?? String(err);
@@ -154,30 +136,24 @@ async uploadPending() {
 
       if (irrecuperable) {
         this.queue.remove(op.id);
+        this.reintentos.delete(op.id);
         this.logger.error(`  ❌ [DESCARTADO] ${op.id} — error irrecuperable: ${msg}`);
       } else {
-        this.logger.error(`  ❌ ${op.id} falló (se reintentará): ${msg}`);
+        const intentos = (this.reintentos.get(op.id) ?? 0) + 1;
+        this.reintentos.set(op.id, intentos);
+
+        if (intentos >= 20) {
+          this.queue.remove(op.id);
+          this.reintentos.delete(op.id);
+          this.logger.error(`  ❌ [DESCARTADO por límite] ${op.id} — después de 20 intentos: ${msg}`);
+        } else {
+          this.logger.error(`  ❌ ${op.id} falló (intento ${intentos}/20): ${msg}`);
+        }
       }
     }
   }
-    // Procesar emails pendientes
-    const emailsPendientes = this.queue.getAll().filter(op => op.entity === '_email_pendiente');
-    for (const op of emailsPendientes) {
-      try {
-        if (op.data.tipo === 'tareaAsignada') {
-          await this.mailService.notificarTareaAsignada(
-            op.data.emailDestino,
-            op.data.nombreTarea,
-          );
-          this.logger.log(`✅ Email pendiente enviado a ${op.data.emailDestino}`);
-        }
-        this.queue.remove(op.id);
-      } catch (err) {
-        this.logger.error(`❌ Error enviando email pendiente: ${err.message}`);
-      }
-    }
 
-   const restantes = this.queue.count();
+  const restantes = this.queue.count();
   if (restantes === 0) {
     this.logger.log('✅ Cola vacía — todo sincronizado con Supabase');
   } else {
@@ -188,99 +164,141 @@ async uploadPending() {
 }
 
   private async executeOperation(op: any) {
-  const { entity, operation, data } = op;
+    const { entity, operation, data } = op;
+    
 
-  // ── Email pendiente ───────────────────────────────────────────────────────
-  if (entity === '_email_pendiente') {
-    await this.procesarEmailPendiente(data);
-    return;
-  }
-
-  // ── Registro usuario ──────────────────────────────────────────────────────
-  if (entity === '_registro_usuario') {
-    await this.syncRegistroUsuario(data);
-    return;
-  }
-
-  // ── DELETE ────────────────────────────────────────────────────────────────
-  if (operation === 'DELETE') {
-    const pk = Object.keys(data)[0];
-    const pkValue = data[pk];
-    if (pkValue === undefined || pkValue === null || isNaN(Number(pkValue))) {
-      this.logger.error(`  ❌ DELETE descartado — id inválido: ${pkValue}`);
+    // ── Email pendiente ─────────────────────────────────────────────────────
+    if (entity === '_email_pendiente') {
+      await this.procesarEmailPendiente(data);
       return;
     }
-    await this.dataSource.query(
-      `DELETE FROM "${entity}" WHERE ${pk} = $1`,
-      [Number(pkValue)],
-    );
-    return;
-  }
 
-  // ── CREATE especial: tarea (no incluir idtarea negativo) ──────────────────
-  if (entity === 'tarea' && operation === 'CREATE') {
-    const cleanData = Object.fromEntries(
-      Object.entries(data).filter(([k, v]) => {
-        if (k.startsWith('_')) return false;
-        if (k === 'idtarea') return false; // ← excluye el id temporal negativo
-        if (typeof v === 'string' && (v as string).startsWith('offline_')) return false;
-        return true;
-      }),
-    );
+    // ── Registro usuario ────────────────────────────────────────────────────
+    if (entity === '_registro_usuario') {
+      await this.syncRegistroUsuario(data);
+      return;
+    }
 
-    const cols = Object.keys(cleanData).join(', ');
-    const vals = Object.values(cleanData);
-    const placeholders = vals.map((_, i) => `$${i + 1}`).join(', ');
+    // ── DELETE ──────────────────────────────────────────────────────────────
+    if (operation === 'DELETE') {
+      const pk = Object.keys(data)[0];
+      const pkValue = data[pk];
+      if (pkValue === undefined || pkValue === null || isNaN(Number(pkValue))) {
+        this.logger.error(`  ❌ DELETE descartado — id inválido: ${pkValue}`);
+        return;
+      }
+      await this.dataSource.query(
+        `DELETE FROM "${entity}" WHERE ${pk} = $1`,
+        [Number(pkValue)],
+      );
+      return;
+    }
 
-    // Supabase genera el id real automáticamente (SERIAL)
-    const result = await this.dataSource.query(
-      `INSERT INTO tarea (${cols}) VALUES (${placeholders}) RETURNING idtarea`,
-      vals,
-    );
+    // ── CREATE especial: tarea (excluye idtarea negativo) ───────────────────
+    if (entity === 'tarea' && operation === 'CREATE') {
+      const cleanData = Object.fromEntries(
+        Object.entries(data).filter(([k, v]) => {
+          if (k.startsWith('_')) return false;
+          if (k === 'idtarea') return false; // excluye id temporal negativo
+          if (typeof v === 'string' && (v as string).startsWith('offline_')) return false;
+          return true;
+        }),
+      );
 
-    const idReal = result[0]?.idtarea;
-    const idTemporal = data.idtarea;
-    this.logger.log(`  ✅ Tarea offline sincronizada — id temporal: ${idTemporal} → id real: ${idReal}`);
+      const cols = Object.keys(cleanData).join(', ');
+      const vals = Object.values(cleanData);
+      const placeholders = vals.map((_, i) => `$${i + 1}`).join(', ');
 
-    // Actualiza asignaciones en cola que apuntaban al id temporal
-    if (idReal && idTemporal < 0) {
-      const queue = this.queue.getAll();
-      let cambios = 0;
-      for (const pendiente of queue) {
-        if (pendiente.entity === 'asignacion_tarea' && pendiente.data.idtarea === idTemporal) {
-          pendiente.data.idtarea = idReal;
-          cambios++;
+      const result = await this.dataSource.query(
+        `INSERT INTO tarea (${cols}) VALUES (${placeholders}) RETURNING idtarea`,
+        vals,
+      );
+
+      const idReal = result[0]?.idtarea;
+      const idTemporal = data.idtarea;
+      this.logger.log(`  ✅ Tarea offline → id real: ${idReal}`);
+
+      // Actualiza asignaciones Y detalles pendientes con el id real
+      if (idReal && idTemporal < 0) {
+        const queue = this.queue.getAll();
+        let cambios = 0;
+        for (const pendiente of queue) {
+          if (
+            (pendiente.entity === 'asignacion_tarea' ||
+             pendiente.entity === 'detalle_tarea') &&
+            pendiente.data.idtarea === idTemporal
+          ) {
+            pendiente.data.idtarea = idReal;
+            cambios++;
+          }
+        }
+        if (cambios > 0) {
+          const fs = require('fs');
+          const queueFile = (this.queue as any).queueFile;
+          fs.writeFileSync(queueFile, JSON.stringify(queue, null, 2));
+          this.logger.log(`  🔄 ${cambios} operación(es) actualizadas: ${idTemporal} → ${idReal}`);
         }
       }
-      if (cambios > 0) {
-        const fs = require('fs');
-        const queueFile = (this.queue as any).queueFile;
-        fs.writeFileSync(queueFile, JSON.stringify(queue, null, 2));
-        this.logger.log(`  🔄 ${cambios} asignación(es) actualizadas: ${idTemporal} → ${idReal}`);
-      }
-    }
-    return;
-  }
-
-  // ── CREATE especial: asignacion_tarea — verifica FK antes de insertar ─────
-  if (entity === 'asignacion_tarea' && operation === 'CREATE') {
-    const idtarea = data.idtarea;
-
-    // Si el idtarea es negativo, la tarea aún no se sincronizó
-    if (idtarea < 0) {
-      throw new Error(`Tarea padre #${idtarea} aún no sincronizada — reintentando`);
+      return;
     }
 
-    // Verifica que la tarea exista en Supabase
-    const tareaExiste = await this.dataSource.query(
-      `SELECT idtarea FROM tarea WHERE idtarea = $1`,
-      [idtarea],
-    );
+    // ── CREATE especial: asignacion_tarea — verifica FK ────────────────────
+    if (entity === 'asignacion_tarea' && operation === 'CREATE') {
+      const idtarea = data.idtarea;
+      if (idtarea < 0) throw new Error(`Tarea padre #${idtarea} aún no sincronizada`);
 
-    if (!tareaExiste.length) {
-      throw new Error(`Tarea #${idtarea} no existe en Supabase todavía`);
+      const existe = await this.dataSource.query(
+        `SELECT idtarea FROM tarea WHERE idtarea = $1`, [idtarea],
+      );
+      if (!existe.length) throw new Error(`Tarea #${idtarea} no existe en Supabase todavía`);
+
+      const cleanData = Object.fromEntries(
+        Object.entries(data).filter(([k, v]) => {
+          if (k.startsWith('_')) return false;
+          if (typeof v === 'string' && (v as string).startsWith('offline_')) return false;
+          return true;
+        }),
+      );
+
+      const cols = Object.keys(cleanData).join(', ');
+      const vals = Object.values(cleanData);
+      const placeholders = vals.map((_, i) => `$${i + 1}`).join(', ');
+      await this.dataSource.query(
+        `INSERT INTO asignacion_tarea (${cols}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`,
+        vals,
+      );
+      return;
     }
 
+    // ── CREATE especial: detalle_tarea — verifica FK ────────────────────────
+    if (entity === 'detalle_tarea' && operation === 'CREATE') {
+      const idtarea = data.idtarea;
+      if (idtarea < 0) throw new Error(`Tarea padre #${idtarea} aún no sincronizada`);
+
+      const existe = await this.dataSource.query(
+        `SELECT idtarea FROM tarea WHERE idtarea = $1`, [idtarea],
+      );
+      if (!existe.length) throw new Error(`Tarea #${idtarea} no existe en Supabase todavía`);
+
+      const cleanData = Object.fromEntries(
+        Object.entries(data).filter(([k, v]) => {
+          if (k.startsWith('_')) return false;
+          if (typeof v === 'string' && (v as string).startsWith('offline_')) return false;
+          return true;
+        }),
+      );
+
+      const cols = Object.keys(cleanData).join(', ');
+      const vals = Object.values(cleanData);
+      const placeholders = vals.map((_, i) => `$${i + 1}`).join(', ');
+      await this.dataSource.query(
+        `INSERT INTO detalle_tarea (${cols}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`,
+        vals,
+      );
+      return;
+    }
+
+    // ── CREATE / UPDATE genérico ────────────────────────────────────────────
     const cleanData = Object.fromEntries(
       Object.entries(data).filter(([k, v]) => {
         if (k.startsWith('_')) return false;
@@ -293,58 +311,37 @@ async uploadPending() {
     const vals = Object.values(cleanData);
     const placeholders = vals.map((_, i) => `$${i + 1}`).join(', ');
 
+    if (operation === 'CREATE') {
+      await this.dataSource.query(
+        `INSERT INTO "${entity}" (${cols}) VALUES (${placeholders})`,
+        vals,
+      );
+      return;
+    }
+
+    const pk = Object.keys(cleanData)[0];
+    const updates = Object.keys(cleanData)
+      .map((k, i) => `${k} = $${i + 1}`)
+      .join(', ');
+
     await this.dataSource.query(
-      `INSERT INTO asignacion_tarea (${cols}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`,
+      `INSERT INTO "${entity}" (${cols})
+       VALUES (${placeholders})
+       ON CONFLICT (${pk}) DO UPDATE SET ${updates}`,
       vals,
     );
-    return;
   }
 
-  // ── CREATE / UPDATE genérico ──────────────────────────────────────────────
-  const cleanData = Object.fromEntries(
-    Object.entries(data).filter(([k, v]) => {
-      if (k.startsWith('_')) return false;
-      if (typeof v === 'string' && (v as string).startsWith('offline_')) return false;
-      return true;
-    }),
-  );
-
-  const cols = Object.keys(cleanData).join(', ');
-  const vals = Object.values(cleanData);
-  const placeholders = vals.map((_, i) => `$${i + 1}`).join(', ');
-
-  if (operation === 'CREATE') {
-    await this.dataSource.query(
-      `INSERT INTO "${entity}" (${cols}) VALUES (${placeholders})`,
-      vals,
-    );
-    return;
+  private async procesarEmailPendiente(data: any) {
+    if (!data?.tipo || !data?.emailDestino) return;
+    if (data.tipo === 'tareaAsignada') {
+      await this.mailService.notificarTareaAsignada(
+        data.emailDestino,
+        data.nombreTarea ?? 'Sin nombre',
+      );
+      this.logger.log(`  📧 Email tareaAsignada enviado a ${data.emailDestino}`);
+    }
   }
-
-  const pk = Object.keys(cleanData)[0];
-  const updates = Object.keys(cleanData)
-    .map((k, i) => `${k} = $${i + 1}`)
-    .join(', ');
-
-  await this.dataSource.query(
-    `INSERT INTO "${entity}" (${cols})
-     VALUES (${placeholders})
-     ON CONFLICT (${pk}) DO UPDATE SET ${updates}`,
-    vals,
-  );
-}
-
-private async procesarEmailPendiente(data: any) {
-  if (!data?.tipo || !data?.emailDestino) return;
-
-  if (data.tipo === 'tareaAsignada') {
-    await this.mailService.notificarTareaAsignada(
-      data.emailDestino,
-      data.nombreTarea ?? 'Sin nombre',
-    );
-    this.logger.log(`  📧 Email tareaAsignada enviado a ${data.emailDestino}`);
-  }
-}
 
   private async syncRegistroUsuario(data: any) {
     const { userData, role, montoporhora, montoporjornal, montomensual } = data;
