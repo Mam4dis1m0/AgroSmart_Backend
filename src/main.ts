@@ -31,12 +31,11 @@ async function bootstrap() {
     credentials: true,
   });
 
-   app.use((_req: any, res: any, next: any) => {
+  app.use((_req: any, res: any, next: any) => {
     res.setHeader('Cross-Origin-Opener-Policy', 'unsafe-none');
     res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
     next();
   });
-
 
   await app.listen(3000);
   logger.log('🚀 Servidor corriendo en http://localhost:3000');

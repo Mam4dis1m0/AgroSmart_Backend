@@ -412,4 +412,99 @@ async completar(idAsignacion: number): Promise<AsignacionTarea> {
 
   return asignacion;
 }
+
+async completarConEvidencia(idTarea: number, body: any, fotoPath: string | null) {
+  const {
+    observaciones, tipoactividad, fechaprogramada,
+    nombreEmpleado, lote, idasigtarea,
+  } = body;
+
+  // 1. Completar la asignación o la tarea
+  if (idasigtarea) {
+    await this.completar(Number(idasigtarea));
+  } else {
+    await this.update(idTarea, { estado: 'Completado' } as any);
+  }
+
+  // 2. Generar PDF
+  const pdfBuffer = await this.generarPDF({
+    idtarea: idTarea, tipoactividad, fechaprogramada,
+    nombreEmpleado, lote, observaciones, fotoPath,
+  });
+
+  // 3. Obtener email del admin desde la tarea
+  const tareaConAdmin = await this.repo.findOne({
+    where: { idtarea: idTarea },
+    relations: ['idadmincreador', 'idadmincreador.idusuario2'],
+  });
+  const emailAdmin = tareaConAdmin?.idadmincreador?.idusuario2?.email ?? '';
+
+  // 4. Enviar correo con el PDF adjunto
+  if (emailAdmin) {
+    await this.mailService.notificarTareaCompletadaConEvidencia(
+      emailAdmin, idTarea, tipoactividad, nombreEmpleado,
+      lote, fechaprogramada, observaciones, pdfBuffer,
+    );
+  }
+
+  // 5. Limpiar foto temporal
+  if (fotoPath) {
+    const fs = await import('fs');
+    fs.unlink(fotoPath, () => {});
+  }
+
+  return { ok: true, message: 'Tarea completada y correo enviado.' };
+}
+
+private async generarPDF({ idtarea, tipoactividad, fechaprogramada, nombreEmpleado, lote, observaciones, fotoPath }: any): Promise<Buffer> {
+  const PDFDocument = (await import('pdfkit')).default;
+  const fs = await import('fs');
+
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const chunks: Buffer[] = [];
+    doc.on('data', (c) => chunks.push(c));
+    doc.on('end',  () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    doc.fillColor('#16a34a').fontSize(22).font('Helvetica-Bold').text('AgroSmart', 50, 50);
+    doc.fillColor('#374151').fontSize(13).font('Helvetica').text('Reporte de Tarea Completada', 50, 78);
+    doc.moveTo(50, 98).lineTo(545, 98).strokeColor('#e5e7eb').lineWidth(1).stroke();
+
+    const campo = (label: string, valor: string, y: number) => {
+      doc.fillColor('#6b7280').fontSize(10).font('Helvetica').text(label, 50, y);
+      doc.fillColor('#111827').fontSize(11).font('Helvetica-Bold').text(valor || '—', 180, y);
+    };
+
+    const s = 115; const lh = 22;
+    campo('ID de Tarea',      `#${idtarea}`,          s);
+    campo('Actividad',        tipoactividad,           s + lh);
+    campo('Fecha programada', fechaprogramada,         s + lh * 2);
+    campo('Empleado',         nombreEmpleado,          s + lh * 3);
+    campo('Lote / Cultivo',   lote,                    s + lh * 4);
+    campo('Fecha completada', new Date().toLocaleDateString('es-CO'), s + lh * 5);
+
+    const obsY = s + lh * 7;
+    doc.fillColor('#374151').fontSize(12).font('Helvetica-Bold').text('Observaciones', 50, obsY);
+    doc.moveTo(50, obsY + 16).lineTo(545, obsY + 16).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
+    doc.fillColor('#374151').fontSize(11).font('Helvetica').text(observaciones?.trim() || 'Sin observaciones.', 50, obsY + 24, { width: 495 });
+
+    const imgY = (doc as any).y + 28;
+    doc.fillColor('#374151').fontSize(12).font('Helvetica-Bold').text('Evidencia fotográfica', 50, imgY);
+    doc.moveTo(50, imgY + 16).lineTo(545, imgY + 16).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
+
+    if (fotoPath && fs.existsSync(fotoPath)) {
+      try {
+        doc.image(fotoPath, 50, imgY + 26, { fit: [495, 320], align: 'center' });
+      } catch { doc.fillColor('#9ca3af').fontSize(10).text('No se pudo incrustar la imagen.', 50, imgY + 30); }
+    } else {
+      doc.fillColor('#9ca3af').fontSize(10).font('Helvetica').text('Sin imagen adjunta.', 50, imgY + 30);
+    }
+
+    doc.fillColor('#9ca3af').fontSize(9).font('Helvetica')
+      .text(`Generado por AgroSmart · ${new Date().toLocaleString('es-CO')}`, 50, doc.page.height - 50, { align: 'center', width: 495 });
+
+    doc.end();
+  });
+}
 }

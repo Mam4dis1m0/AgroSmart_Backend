@@ -325,4 +325,37 @@ export class MailService {
       this.logger.error(`❌ Error enviando SMS a ${telefono}: ${err.message}`);
     }
   }
+
+  async notificarTareaCompletadaConEvidencia(
+  emailAdmin: string, idTarea: number, tipoactividad: string,
+  nombreEmpleado: string, lote: string, fechaprogramada: string,
+  observaciones: string, pdfBuffer: Buffer,
+) {
+  try {
+    await this.mailerService.sendMail({
+      to: emailAdmin,
+      subject: `✅ Tarea #${idTarea} completada — ${tipoactividad}`,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f9fafb;padding:24px;border-radius:12px;">
+          <div style="background:#16a34a;border-radius:10px;padding:28px;text-align:center;margin-bottom:24px;">
+            <h1 style="color:#fff;margin:0;font-size:22px;">🌱 AgroSmart</h1>
+          </div>
+          <div style="background:#fff;border-radius:10px;padding:28px;border:1px solid #e5e7eb;">
+            <h2 style="color:#111827;font-size:18px;">✅ Tarea completada con evidencia</h2>
+            <p>El empleado <strong>${nombreEmpleado}</strong> completó la tarea <strong>${tipoactividad}</strong>.</p>
+            <p style="color:#6b7280;font-size:13px;">Adjunto encontrarás el reporte PDF con la evidencia fotográfica.</p>
+          </div>
+        </div>
+      `,
+      attachments: [{
+        filename: `reporte_tarea_${idTarea}_${Date.now()}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf',
+      }],
+    });
+    this.logger.log(`✅ Email con evidencia enviado a ${emailAdmin}`);
+  } catch (err) {
+    this.logger.error(`❌ Error enviando email con evidencia: ${(err as Error).message}`);
+  }
+}
 }
