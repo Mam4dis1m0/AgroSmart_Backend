@@ -23,11 +23,17 @@ async function bootstrap() {
   const extraOrigins = process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [];
 
   app.enableCors({
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'http://localhost:4200',
-    ],
+    origin: (origin, callback) => {
+      const isBrowserlessRequest = !origin;
+      const isLocalhost = origin && /^http:\/\/localhost:\d+$/.test(origin);
+      const isAllowedExtra = origin && extraOrigins.includes(origin);
+
+      if (isBrowserlessRequest || isLocalhost || isAllowedExtra) {
+        callback(null, true);
+      } else {
+        callback(new Error('No permitido por CORS'));
+      }
+    },
     methods: 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     allowedHeaders: 'Content-Type,Authorization',
     credentials: true,
