@@ -20,12 +20,22 @@ async function bootstrap() {
     abortOnError: false,
   });
 
+  const extraOrigins = process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [];
+
   app.enableCors({
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'http://localhost:4200',
-    ],
+    origin: (origin, callback) => {
+      // Sin 'origin' = peticiones que no vienen de un navegador (apps móviles,
+      // Postman, curl). Esas nunca llevan este header, así que siempre se permiten.
+      const isBrowserlessRequest = !origin;
+      const isLocalhost = origin && /^http:\/\/localhost:\d+$/.test(origin);
+      const isAllowedExtra = origin && extraOrigins.includes(origin);
+
+      if (isBrowserlessRequest || isLocalhost || isAllowedExtra) {
+        callback(null, true);
+      } else {
+        callback(new Error('No permitido por CORS'));
+      }
+    },
     methods: 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     allowedHeaders: 'Content-Type,Authorization',
     credentials: true,
@@ -37,8 +47,9 @@ async function bootstrap() {
     next();
   });
 
-  await app.listen(3000);
-  logger.log('🚀 Servidor corriendo en http://localhost:3000');
+  const port = process.env.PORT || 3000;
+  await app.listen(port);
+  logger.log(`🚀 Servidor corriendo en el puerto ${port}`);
 }
 
 bootstrap().catch((err) => {
