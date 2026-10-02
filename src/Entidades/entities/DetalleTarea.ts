@@ -16,6 +16,10 @@ export class DetalleTarea {
   @PrimaryGeneratedColumn({ type: 'integer', name: 'iddetalletarea' })
   iddetalletarea: number;
 
+  /** Tenant (finca dueña del dato) */
+  @Column('integer', { name: 'idfinca' })
+  idfinca: number;
+
   @Column('numeric', {
     name: 'cantidadusada',
     nullable: true,

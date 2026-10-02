@@ -15,6 +15,10 @@ export class EmpleadoCosecha {
   @PrimaryGeneratedColumn({ type: "integer", name: "idempleadocosecha" })
   idempleadocosecha: number;
 
+  /** Tenant (finca dueña del dato) */
+  @Column("integer", { name: "idfinca" })
+  idfinca: number;
+
   @Column("numeric", {
     name: "cantidadcosechada",
     nullable: true,

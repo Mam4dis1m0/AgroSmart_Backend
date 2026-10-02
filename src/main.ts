@@ -2,7 +2,8 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
-
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { tenantMiddleware } from './auth/tenant-context';
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
@@ -19,6 +20,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     abortOnError: false,
   });
+
+  // Contexto por petición (usuario + finca activa). OBLIGATORIO: sin esto el AuthGuard
+  // no puede aislar los datos por finca y rechaza la petición.
+  app.use(tenantMiddleware);
 
   const extraOrigins = process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [];
 
@@ -45,6 +50,16 @@ async function bootstrap() {
     next();
   });
 
+  const config = new DocumentBuilder()
+  .setTitle('AgroSmart API')
+  .setDescription('API de gestión agrícola')
+  .setVersion('1.0')
+  .addBearerAuth()
+  .build();
+const document = SwaggerModule.createDocument(app, config);
+SwaggerModule.setup('api', app, document);
+  
+  
   const port = process.env.PORT || 3000;
   await app.listen(port);
   logger.log(`🚀 Servidor corriendo en el puerto ${port}`);

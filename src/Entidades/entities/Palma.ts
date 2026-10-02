@@ -16,6 +16,10 @@ export class Palma {
   @PrimaryGeneratedColumn({ type: "integer", name: "idpalma" })
   idpalma: number;
 
+  /** Tenant (finca dueña del dato) */
+  @Column("integer", { name: "idfinca" })
+  idfinca: number;
+
   @Column("character varying", { name: "codigo", nullable: true, length: 100 })
   codigo: string | null;
 

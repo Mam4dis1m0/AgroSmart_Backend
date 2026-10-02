@@ -17,6 +17,10 @@ export class AsignacionTarea {
   @PrimaryGeneratedColumn({ type: "integer", name: "idasigtarea" })
   idasigtarea: number;
 
+  /** Tenant (finca dueña del dato) */
+  @Column("integer", { name: "idfinca" })
+  idfinca: number;
+
   @Column("date", { name: "fechaasignacion", nullable: true })
   fechaasignacion: string | null;
 

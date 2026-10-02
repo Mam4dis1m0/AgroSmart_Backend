@@ -1,8 +1,11 @@
 import { Controller, Get, Post, Put, Delete, Param, Body } from '@nestjs/common';
 import { EmpleadoService } from './empleado.service';
 import { CreateEmpleadoDto, UpdateEmpleadoDto } from '../../dto/empleado.dto';
+import { Roles } from '../../auth/auth.decorators';
 
+// La gestión del personal es del administrador de la finca
 @Controller('api/v1/empleados')
+@Roles('admin')
 export class EmpleadoController {
   constructor(private readonly empleadoService: EmpleadoService) {}
 

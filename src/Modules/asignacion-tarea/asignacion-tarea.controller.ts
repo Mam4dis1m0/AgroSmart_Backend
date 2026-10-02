@@ -12,6 +12,7 @@ import {
   CreateAsignacionTareaDto,
   UpdateAsignacionTareaDto,
 } from '../../dto/asignacion-tarea.dto';
+import { Roles } from '../../auth/auth.decorators';
 
 @Controller('asignacion-tarea')
 export class AsignacionTareaController {
@@ -28,16 +29,17 @@ export class AsignacionTareaController {
   @Get(':id') findOne(@Param('id') id: string) {
     return this.asignacionTareaService.findOne(+id);
   }
-  @Post() create(@Body() body: CreateAsignacionTareaDto) {
+  @Post() @Roles('admin') create(@Body() body: CreateAsignacionTareaDto) {
     return this.asignacionTareaService.create(body);
   }
+  // El empleado solo puede actualizar estado/horas de SU asignación (lo valida el servicio)
   @Put(':id') update(
     @Param('id') id: string,
     @Body() body: UpdateAsignacionTareaDto,
   ) {
     return this.asignacionTareaService.update(+id, body);
   }
-  @Delete(':id') remove(@Param('id') id: string) {
+  @Delete(':id') @Roles('admin') remove(@Param('id') id: string) {
     return this.asignacionTareaService.remove(+id);
   }
 }

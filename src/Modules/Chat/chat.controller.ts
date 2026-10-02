@@ -1,6 +1,9 @@
 import { Controller, Post, Body } from '@nestjs/common';
+import { RequiereFuncion } from '../../auth/auth.decorators';
 
+// RF-44: el asistente de IA es una función Premium (el PlanGuard valida el plan de la finca activa)
 @Controller('api/v1/chat')
+@RequiereFuncion('chat_ia')
 export class ChatController {
   @Post()
   async chat(@Body() body: { messages: any[]; system: string }) {

@@ -8,6 +8,7 @@ import { diskStorage } from 'multer';
 import * as path from 'path';
 import { TareasService } from './tareas.service';
 import { CreateTareaDto, UpdateTareaDto, AsignarTareaDto } from '../../dto/tarea.dto';
+import { Roles } from '../../auth/auth.decorators';
 
 @Controller('api/v1/tareas')
 export class TareasController {
@@ -25,14 +26,17 @@ export class TareasController {
   findOne(@Param('id') id: string) { return this.tareasService.findOne(+id); }
 
   @Post()
+  @Roles('admin')
   create(@Body() body: CreateTareaDto) { return this.tareasService.create(body); }
 
+  // El empleado solo puede cambiar el ESTADO de sus tareas (lo valida el servicio)
   @Put(':id')
   update(@Param('id') id: string, @Body() body: UpdateTareaDto) {
     return this.tareasService.update(+id, body);
   }
 
   @Delete(':id')
+  @Roles('admin')
   remove(@Param('id') id: string) {
     const idNum = parseInt(id, 10);
     if (isNaN(idNum)) throw new BadRequestException('ID inválido');
@@ -40,6 +44,7 @@ export class TareasController {
   }
 
   @Patch(':id/asignar')
+  @Roles('admin')
   asignar(@Param('id') id: string, @Body() dto: AsignarTareaDto) {
     return this.tareasService.asignar(+id, dto);
   }

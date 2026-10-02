@@ -26,9 +26,12 @@ export class AsignarTareaDto {
   @Min(1)
   idempleado: number;                   // empleado que recibirá la tarea
 
+  // Opcional y se IGNORA: el administrador que asigna es el de la sesión (JWT).
+  // Se conserva en el DTO para no romper clientes que aún lo envían.
+  @IsOptional()
   @IsInt({ message: 'idadminasignador debe ser un entero.' })
   @Min(1)
-  idadminasignador: number;             // admin que ejecuta la asignación
+  idadminasignador?: number;
 
   @IsOptional()
   @IsDateString()

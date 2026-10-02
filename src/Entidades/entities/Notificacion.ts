@@ -6,6 +6,17 @@ export class Notificacion {
   @PrimaryGeneratedColumn({ type: "integer", name: "idnotificacion" })
   idnotificacion: number;
 
+  /** Finca a la que pertenece el evento. null en notificaciones del Marketplace dirigidas a compradores. */
+  @Column("integer", { name: "idfinca", nullable: true })
+  idfinca: number | null;
+
+  /** Destinatario puntual. null = visible para toda la finca. */
+  @Column("integer", { name: "idusuariodestino", nullable: true })
+  idusuariodestino: number | null;
+
+  @Column("character varying", { name: "titulo", nullable: true, length: 150 })
+  titulo: string | null;
+
   @Column("text", { name: "mensaje", nullable: true })
   mensaje: string | null;
 

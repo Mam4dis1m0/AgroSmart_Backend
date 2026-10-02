@@ -36,10 +36,15 @@ export class SyncService implements OnModuleInit {
     }
   }
 
+  /**
+   * Precarga los empleados de CADA finca en su propia entrada de caché
+   * (empleado_f<idfinca>_all) para poder asignar tareas sin conexión.
+   * Nunca se mezcla el personal de una finca con el de otra.
+   */
   private async precargarEmpleados() {
     try {
-      const empleados = await this.dataSource.query(`
-        SELECT e.idusuario, e.montoporhora, e.montoporjornal,
+      const filas = await this.dataSource.query(`
+        SELECT fu.idfinca, e.idusuario, e.montoporhora, e.montoporjornal,
                u.primernombre, u.primerapellido, u.email,
                json_build_object(
                  'primernombre', u.primernombre,
@@ -47,10 +52,19 @@ export class SyncService implements OnModuleInit {
                  'email', u.email
                ) AS idusuario2
         FROM empleado e
-        JOIN usuario u ON e.idusuario = u.idusuario
+        JOIN usuario u        ON e.idusuario = u.idusuario
+        JOIN finca_usuario fu ON fu.idusuario = e.idusuario AND fu.rol = 'empleado' AND fu.activo = true
       `);
-      this.cache.set('empleado_all', empleados);
-      this.logger.log(`✅ Caché de empleados precargada (${empleados.length} empleados)`);
+
+      const porFinca = new Map<number, any[]>();
+      for (const { idfinca, ...empleado } of filas) {
+        if (!porFinca.has(idfinca)) porFinca.set(idfinca, []);
+        porFinca.get(idfinca)!.push(empleado);
+      }
+      for (const [idfinca, empleados] of porFinca) {
+        this.cache.set(`empleado_f${idfinca}_all`, empleados);
+      }
+      this.logger.log(`✅ Caché de empleados precargada (${filas.length} empleados en ${porFinca.size} finca(s))`);
     } catch (err) {
       this.logger.warn(`⚠️ No se pudo precargar caché de empleados: ${err.message}`);
     }
@@ -129,6 +143,7 @@ async uploadPending() {
       const msg: string = (err as any)?.message ?? String(err);
 
       const irrecuperable =
+        msg.startsWith('[DESCARTAR]') ||
         msg.includes('out of range') ||
         msg.includes('invalid input syntax') ||
         (msg.includes('column') && msg.includes('does not exist')) ||
@@ -185,6 +200,13 @@ async uploadPending() {
       const pkValue = data[pk];
       if (pkValue === undefined || pkValue === null || isNaN(Number(pkValue))) {
         this.logger.error(`  ❌ DELETE descartado — id inválido: ${pkValue}`);
+        return;
+      }
+      // Si la operación trae idfinca (tabla multi-tenant) solo se borra la fila de ESA finca
+      if (Object.prototype.hasOwnProperty.call(data, 'idfinca')) {
+        const filtroFinca = data.idfinca === null ? 'idfinca IS NULL' : 'idfinca = $2';
+        const params = data.idfinca === null ? [Number(pkValue)] : [Number(pkValue), Number(data.idfinca)];
+        await this.dataSource.query(`DELETE FROM "${entity}" WHERE ${pk} = $1 AND ${filtroFinca}`, params);
         return;
       }
       await this.dataSource.query(
@@ -320,6 +342,31 @@ async uploadPending() {
     }
 
     const pk = Object.keys(cleanData)[0];
+
+    // Tablas multi-tenant: UPDATE acotado a la finca. Nunca un upsert, que podría pisar
+    // una fila de OTRA finca si el id coincide (RNF-16).
+    if (Object.prototype.hasOwnProperty.call(cleanData, 'idfinca')) {
+      const { [pk]: pkValue, idfinca, ...campos } = cleanData as Record<string, unknown>;
+      const nombres = Object.keys(campos);
+      if (nombres.length === 0) return;
+
+      const sets = nombres.map((k, i) => `"${k}" = $${i + 1}`).join(', ');
+      const params: unknown[] = [...Object.values(campos), pkValue];
+      let filtroFinca = 'idfinca IS NULL';
+      if (idfinca !== null && idfinca !== undefined) {
+        params.push(idfinca);
+        filtroFinca = `idfinca = $${params.length}`;
+      }
+      const resultado = await this.dataSource.query(
+        `UPDATE "${entity}" SET ${sets} WHERE ${pk} = $${nombres.length + 1} AND ${filtroFinca} RETURNING ${pk}`,
+        params,
+      );
+      if (filasActualizadas(resultado) === 0) {
+        this.logger.warn(`  ⚠️ UPDATE descartado: ${entity} #${String(pkValue)} no existe en la finca ${String(idfinca)}`);
+      }
+      return;
+    }
+
     const updates = Object.keys(cleanData)
       .map((k, i) => `${k} = $${i + 1}`)
       .join(', ');
@@ -344,7 +391,7 @@ async uploadPending() {
   }
 
   private async syncRegistroUsuario(data: any) {
-    const { userData, role, montoporhora, montoporjornal, montomensual } = data;
+    const { userData, role, montoporhora, montoporjornal, montomensual, idfinca, ubicacion, latitud, longitud } = data;
 
     const cleanUser = Object.fromEntries(
       Object.entries(userData as Record<string, unknown>).filter(([k, v]) => {
@@ -358,15 +405,18 @@ async uploadPending() {
     const vals = Object.values(cleanUser);
     const placeholders = vals.map((_, i) => `$${i + 1}`).join(', ');
 
+    // Si el correo ya existe NO se sobrescribe la cuenta de otra persona: se descarta la operación.
     const result = await this.dataSource.query(
       `INSERT INTO usuario (${cols})
        VALUES (${placeholders})
-       ON CONFLICT (email) DO UPDATE SET ${Object.keys(cleanUser).map((k, i) => `${k} = $${i + 1}`).join(', ')}
+       ON CONFLICT (email) DO NOTHING
        RETURNING idusuario`,
       vals,
     );
     const idusuario = result[0]?.idusuario;
-    if (!idusuario) throw new Error('No se pudo obtener el idusuario tras insertar');
+    if (!idusuario) {
+      throw new Error('[DESCARTAR] El correo ya está registrado: se descarta el registro offline');
+    }
 
     if (role === 'admin') {
       await this.dataSource.query(
@@ -375,6 +425,13 @@ async uploadPending() {
          ON CONFLICT (idusuario) DO UPDATE SET montomensual = $2`,
         [idusuario, montomensual ?? 0],
       );
+    } else if (role === 'comprador') {
+      await this.dataSource.query(
+        `INSERT INTO comprador_perfil (idusuario, ubicacion, latitud, longitud)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (idusuario) DO NOTHING`,
+        [idusuario, ubicacion ?? null, latitud ?? null, longitud ?? null],
+      );
     } else {
       await this.dataSource.query(
         `INSERT INTO empleado (idusuario, montoporhora, montoporjornal)
@@ -382,8 +439,25 @@ async uploadPending() {
          ON CONFLICT (idusuario) DO UPDATE SET montoporhora = $2, montoporjornal = $3`,
         [idusuario, montoporhora ?? 0, montoporjornal ?? 0],
       );
+      // El empleado nace dentro de la finca del administrador que lo registró
+      if (idfinca) {
+        await this.dataSource.query(
+          `INSERT INTO finca_usuario (idfinca, idusuario, rol) VALUES ($1, $2, 'empleado')
+           ON CONFLICT (idfinca, idusuario) DO NOTHING`,
+          [idfinca, idusuario],
+        );
+      }
     }
 
     this.logger.log(`  👤 Usuario sincronizado: idusuario=${idusuario} rol=${role}`);
   }
+}
+
+/** UPDATE ... RETURNING devuelve [filas, n] según la versión de TypeORM; normaliza a cantidad. */
+function filasActualizadas(resultado: any): number {
+  if (!Array.isArray(resultado)) return 0;
+  if (resultado.length === 2 && Array.isArray(resultado[0]) && typeof resultado[1] === 'number') {
+    return resultado[1];
+  }
+  return resultado.length;
 }

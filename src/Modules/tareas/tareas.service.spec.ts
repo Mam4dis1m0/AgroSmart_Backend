@@ -15,6 +15,7 @@ import {
   mockOfflineQueueService,
   mockSyncService, mockMailService,
   createMockRepository,
+  conSesion, sesionAdmin,
 } from '../../test/mocks/common-providers.mock';
 
 describe('TareasService', () => {
@@ -69,10 +70,10 @@ describe('TareasService', () => {
     };
 
     it('debe marcar la asignación como Completado y guardarla', async () => {
-      mockAsignacionTareaRepository.findOneOrFail.mockResolvedValue({ ...asignacionBase });
+      mockAsignacionTareaRepository.findOne.mockResolvedValue({ ...asignacionBase });
       mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
 
-      const result = await service.completar(10);
+      const result = await conSesion(sesionAdmin, () => service.completar(10));
 
       expect(result.estado).toBe('Completado');
       expect(mockAsignacionTareaRepository.save).toHaveBeenCalledWith(
@@ -81,19 +82,20 @@ describe('TareasService', () => {
     });
 
     it('debe actualizar también el estado de la tarea principal asociada', async () => {
-      mockAsignacionTareaRepository.findOneOrFail.mockResolvedValue({ ...asignacionBase });
+      mockAsignacionTareaRepository.findOne.mockResolvedValue({ ...asignacionBase });
       mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
 
-      await service.completar(10);
+      await conSesion(sesionAdmin, () => service.completar(10));
 
-      expect(mockTareaRepository.update).toHaveBeenCalledWith(7, { estado: 'Completado' });
+      // Se actualiza SOLO la tarea de la finca activa (idfinca = 1)
+      expect(mockTareaRepository.update).toHaveBeenCalledWith({ idtarea: 7, idfinca: 1 }, { estado: 'Completado' });
     });
 
     it('debe notificar por correo al administrador que asignó la tarea', async () => {
-      mockAsignacionTareaRepository.findOneOrFail.mockResolvedValue({ ...asignacionBase });
+      mockAsignacionTareaRepository.findOne.mockResolvedValue({ ...asignacionBase });
       mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
 
-      await service.completar(10);
+      await conSesion(sesionAdmin, () => service.completar(10));
 
       expect(mockMailService.notificarTareaCompletada).toHaveBeenCalledWith(
         'admin@agrosmart.com',
@@ -104,22 +106,23 @@ describe('TareasService', () => {
 
     it('NO debe intentar notificar si la asignación no tiene admin asignador con email', async () => {
       const sinAdmin = { ...asignacionBase, idadminasignador: null };
-      mockAsignacionTareaRepository.findOneOrFail.mockResolvedValue(sinAdmin);
+      mockAsignacionTareaRepository.findOne.mockResolvedValue(sinAdmin);
       mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
 
-      await service.completar(10);
+      await conSesion(sesionAdmin, () => service.completar(10));
 
       expect(mockMailService.notificarTareaCompletada).not.toHaveBeenCalled();
     });
 
     it('debe invalidar el caché de la tarea y el listado general tras completar', async () => {
-      mockAsignacionTareaRepository.findOneOrFail.mockResolvedValue({ ...asignacionBase });
+      mockAsignacionTareaRepository.findOne.mockResolvedValue({ ...asignacionBase });
       mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
 
-      await service.completar(10);
+      await conSesion(sesionAdmin, () => service.completar(10));
 
-      expect(mockCacheService.delete).toHaveBeenCalledWith('tareas_7');
-      expect(mockCacheService.delete).toHaveBeenCalledWith('tareas_all');
+      // Las claves de caché llevan la finca: el caché de una finca nunca se sirve a otra
+      expect(mockCacheService.delete).toHaveBeenCalledWith('tareas_f1_7');
+      expect(mockCacheService.delete).toHaveBeenCalledWith('tareas_f1_all');
     });
   });
 });

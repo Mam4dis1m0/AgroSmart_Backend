@@ -18,13 +18,43 @@ import { AsignacionTarea } from '../Entidades/entities/AsignacionTarea';
 import { EmpleadoCosecha } from '../Entidades/entities/EmpleadoCosecha';
 import { Notificacion }    from '../Entidades/entities/Notificacion';
 import { Auditoria }       from '../Entidades/entities/Auditoria';
+import { Plan } from '../Entidades/entities/Plan';
+import { Finca } from '../Entidades/entities/Finca';
+import { FincaUsuario } from '../Entidades/entities/FincaUsuario';
+import { Suscripcion } from '../Entidades/entities/Suscripcion';
+import { Pago } from '../Entidades/entities/Pago';
+import { CompradorPerfil } from '../Entidades/entities/CompradorPerfil';
+import { Cosecha } from '../Entidades/entities/Cosecha';
+import { CompraInsumo } from '../Entidades/entities/CompraInsumo';
+import { Listado } from '../Entidades/entities/Listado';
+import { ListadoFoto } from '../Entidades/entities/ListadoFoto';
+import { OrdenCompra } from '../Entidades/entities/OrdenCompra';
+import { CarritoItem } from '../Entidades/entities/CarritoItem';
+import { WishlistItem } from '../Entidades/entities/WishlistItem';
+import { Anunciante } from '../Entidades/entities/Anunciante';
+import { Anuncio } from '../Entidades/entities/Anuncio';
+import { AnuncioImpresion } from '../Entidades/entities/AnuncioImpresion';
+import { Nomina } from '../Entidades/entities/Nomina';
+import { NominaDetalle } from '../Entidades/entities/NominaDetalle';
+import { PerfilTalento } from '../Entidades/entities/PerfilTalento';
+import { SolicitudContratacion } from '../Entidades/entities/SolicitudContratacion';
+import { ChatConversacion } from '../Entidades/entities/ChatConversacion';
+import { ChatMensaje } from '../Entidades/entities/ChatMensaje';
+import { MensajeInterno } from '../Entidades/entities/MensajeInterno';
 
 const logger = new Logger('DatabaseModule');
 
-const ALL_ENTITIES = [
+export const ALL_ENTITIES = [
   Usuario, Administrador, Empleado, Lote, Palma, Cultivo,
   ProduccionPalma, Insumo, Tarea, DetalleTarea, AsignacionTarea,
   EmpleadoCosecha, Notificacion, Auditoria,
+  // ── Multi-tenant, planes SaaS y capa de negocio (documento 1.5) ──
+  Plan, Finca, FincaUsuario, Suscripcion, Pago,
+  CompradorPerfil, Cosecha, CompraInsumo,
+  Listado, ListadoFoto, OrdenCompra, CarritoItem, WishlistItem,
+  Anunciante, Anuncio, AnuncioImpresion,
+  Nomina, NominaDetalle, PerfilTalento, SolicitudContratacion,
+  ChatConversacion, ChatMensaje, MensajeInterno,
 ];
 
 const DataSourceProvider = {
@@ -79,6 +109,9 @@ function offlineRepo(entity: any) {
     delete: noopArray,
     remove: noop,
     count: () => Promise.resolve(0),
+    exist: () => Promise.resolve(false),
+    existsBy: () => Promise.resolve(false),
+    countBy: () => Promise.resolve(0),
     query: noopArray,
     createQueryBuilder: () => ({
       leftJoinAndSelect: function() { return this; },

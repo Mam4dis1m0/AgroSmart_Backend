@@ -1,8 +1,10 @@
 import { Controller, Get, Post, Put, Delete, Param, Body } from '@nestjs/common';
 import { AdministradorService } from './administrador.service';
 import { CreateAdministradorDto, UpdateAdministradorDto } from '../../dto/administrador.dto';
+import { Roles } from '../../auth/auth.decorators';
 
 @Controller('administrador')
+@Roles('admin')
 export class AdministradorController {
   constructor(private readonly service: AdministradorService) {}
 

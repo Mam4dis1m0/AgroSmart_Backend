@@ -15,6 +15,10 @@ export class ProduccionPalma {
   @PrimaryGeneratedColumn({ type: "integer", name: "idproduccionpalma" })
   idproduccionpalma: number;
 
+  /** Tenant (finca dueña del dato) */
+  @Column("integer", { name: "idfinca" })
+  idfinca: number;
+
   @Column("date", { name: "fecharegistro", nullable: true })
   fecharegistro: string | null;
 

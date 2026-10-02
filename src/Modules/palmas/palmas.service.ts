@@ -1,8 +1,9 @@
 // src/Modules/palmas/palmas.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Palma } from '../../Entidades/entities/Palma';
+import { Lote } from '../../Entidades/entities/Lote';
 import { CreatePalmaDto, UpdatePalmaDto } from '../../dto/palma.dto';
 import { CacheService } from '../../common/cache.service';
 import { OfflineQueueService } from '../../common/offline-queue.service';
@@ -21,12 +22,14 @@ export class PalmasService extends BaseOfflineService<Palma> {
   }
 
   findAll() {
-    return this.findAllOffline(() => this.repo.find({ relations: ['idlote'] }));
+    return this.findAllOffline(() =>
+      this.repo.find({ where: this.where(), relations: ['idlote'] }),
+    );
   }
 
   findOne(id: number) {
     return this.findOneOffline(id, () =>
-      this.repo.findOne({ where: { idpalma: id }, relations: ['idlote'] }),
+      this.repo.findOne({ where: this.where({ idpalma: id }), relations: ['idlote'] }),
     );
   }
 
@@ -36,13 +39,14 @@ export class PalmasService extends BaseOfflineService<Palma> {
       const all = this.cache.get<Palma[]>(this.cacheKeyAll()) ?? [];
       return all.filter((p: any) => p.idlote?.idlote === idlote || p.idlote === idlote);
     }
-    return this.repo.find({ where: { idlote: { idlote } as any }, relations: ['idlote'] });
+    return this.repo.find({ where: this.where({ idlote }), relations: ['idlote'] });
   }
 
   create(dto: CreatePalmaDto) {
-    return this.createOffline(dto, () => {
+    return this.createOffline(dto, async () => {
+      if (dto.idlote) await this.assertEnFinca(this.repo.manager.getRepository(Lote), { idlote: dto.idlote }, 'El lote');
       const entity = this.repo.create({
-        ...dto,
+        ...this.withFinca(dto),
         idlote: dto.idlote ? { idlote: dto.idlote } as any : undefined,
       });
       return this.repo.save(entity);
@@ -51,9 +55,11 @@ export class PalmasService extends BaseOfflineService<Palma> {
 
   update(id: number, dto: UpdatePalmaDto) {
     return this.updateOffline(id, dto, async () => {
-      const entity = await this.repo.findOneByOrFail({ idpalma: id });
+      const entity = await this.repo.findOneBy(this.where({ idpalma: id }));
+      if (!entity) throw new NotFoundException(`palma #${id} no existe en esta finca`);
+      if (dto.idlote) await this.assertEnFinca(this.repo.manager.getRepository(Lote), { idlote: dto.idlote }, 'El lote');
       Object.assign(entity, {
-        ...dto,
+        ...this.sinFinca(dto),
         idlote: dto.idlote ? { idlote: dto.idlote } as any : entity.idlote,
       });
       return this.repo.save(entity);
@@ -61,6 +67,6 @@ export class PalmasService extends BaseOfflineService<Palma> {
   }
 
   remove(id: number) {
-    return this.removeOffline(id, () => this.repo.delete(id).then(() => {}));
+    return this.removeOffline(id, () => this.deleteEnFinca(id));
   }
 }

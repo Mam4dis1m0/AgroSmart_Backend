@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 
 import { DatabaseModule } from './common/database.module';
 import { CommonModule }   from './common/common.module';
+import { AuthModule }     from './auth/auth.module';
 
 import { UsuariosModule }        from './Modules/usuarios/usuarios.module';
 import { AdministradorModule }   from './Modules/administrador/administrador.module';
@@ -22,11 +23,20 @@ import { AuditoriaModule }       from './Modules/auditoria/auditoria.module';
 import { ChatModule }            from './Modules/Chat/chat.module';
 import { MailModule }            from './mail/mail.module';
 
+// ── Multi-tenant, planes SaaS y capa de negocio (documento, sección 1.5) ──────
+import { FincasModule }          from './Modules/fincas/fincas.module';
+import { SuscripcionesModule }   from './Modules/suscripciones/suscripciones.module';
+import { CosechasModule }        from './Modules/cosechas/cosechas.module';
+import { MarketplaceModule }     from './Modules/marketplace/marketplace.module';
+import { NominaModule }          from './Modules/nomina/nomina.module';
+import { ReportesModule }        from './Modules/reportes/reportes.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     DatabaseModule,
     CommonModule,
+    AuthModule,          // JWT + guards globales (rol, finca activa, plan)
     UsuariosModule,
     AdministradorModule,
     EmpleadoModule,
@@ -43,6 +53,12 @@ import { MailModule }            from './mail/mail.module';
     AuditoriaModule,
     ChatModule,
     MailModule,
+    FincasModule,
+    SuscripcionesModule,
+    CosechasModule,
+    MarketplaceModule,
+    NominaModule,
+    ReportesModule,
   ],
 })
 export class AppModule {}

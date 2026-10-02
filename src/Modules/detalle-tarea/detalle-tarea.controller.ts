@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Put, Delete, Param, Body } from '@nestjs/common';
 import { DetalleTareaService } from './detalle-tarea.service';
 import { CreateDetalleTareaDto, UpdateDetalleTareaDto } from '../../dto/detalle-tarea.dto';
+import { Roles } from '../../auth/auth.decorators';
 
 @Controller('detalle-tarea')
 export class DetalleTareaController {
@@ -9,7 +10,8 @@ export class DetalleTareaController {
   @Get() findAll() { return this.detalleTareaService.findAll(); }
   @Get('tarea/:idtarea') findByTarea(@Param('idtarea') idtarea: string) { return this.detalleTareaService.findByTarea(+idtarea); }
   @Get(':id') findOne(@Param('id') id: string) { return this.detalleTareaService.findOne(+id); }
+  // El empleado también registra los insumos que consume en su tarea (CU-12 / RF-12)
   @Post() create(@Body() body: CreateDetalleTareaDto) { return this.detalleTareaService.create(body); }
-  @Put(':id') update(@Param('id') id: string, @Body() body: UpdateDetalleTareaDto) { return this.detalleTareaService.update(+id, body); }
-  @Delete(':id') remove(@Param('id') id: string) { return this.detalleTareaService.remove(+id); }
+  @Put(':id') @Roles('admin') update(@Param('id') id: string, @Body() body: UpdateDetalleTareaDto) { return this.detalleTareaService.update(+id, body); }
+  @Delete(':id') @Roles('admin') remove(@Param('id') id: string) { return this.detalleTareaService.remove(+id); }
 }

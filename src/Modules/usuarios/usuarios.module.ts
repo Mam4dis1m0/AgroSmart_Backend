@@ -6,14 +6,17 @@ import { UsuariosService } from './usuarios.service';
 import { Usuario } from '../../Entidades/entities/Usuario';
 import { Administrador } from '../../Entidades/entities/Administrador';
 import { Empleado } from '../../Entidades/entities/Empleado';
+import { CompradorPerfil } from '../../Entidades/entities/CompradorPerfil';
 import { CommonModule } from '../../common/common.module';
-import { MailModule } from '../../mail/mail.module'; // ← NUEVO
+import { MailModule } from '../../mail/mail.module';
+import { FincasModule } from '../fincas/fincas.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Usuario, Administrador, Empleado]),
+    TypeOrmModule.forFeature([Usuario, Administrador, Empleado, CompradorPerfil]),
     CommonModule,
-    MailModule, // ← NUEVO
+    MailModule,
+    FincasModule,
   ],
   controllers: [UsuariosController],
   providers: [UsuariosService],

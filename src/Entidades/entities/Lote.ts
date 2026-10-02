@@ -17,6 +17,10 @@ export class Lote {
   @PrimaryGeneratedColumn({ type: "integer", name: "idlote" })
   idlote: number;
 
+  /** Tenant (finca dueña del dato) */
+  @Column("integer", { name: "idfinca" })
+  idfinca: number;
+
   @Column("character varying", { name: "nombre", nullable: true, length: 100 })
   nombre: string | null;
 

@@ -22,6 +22,10 @@ export class Insumo {
   @PrimaryGeneratedColumn({ type: 'integer', name: 'idinsumo' })
   idinsumo: number;
 
+  /** Tenant (finca dueña del dato) */
+  @Column('integer', { name: 'idfinca' })
+  idfinca: number;
+
   @Column('character varying', { name: 'nombre', nullable: true, length: 100 })
   nombre: string | null;
 

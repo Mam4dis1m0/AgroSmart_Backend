@@ -5,7 +5,9 @@ import { Empleado } from '../../Entidades/entities/Empleado';
 import { CacheService } from '../../common/cache.service';
 import { OfflineQueueService } from '../../common/offline-queue.service';
 import { SyncService } from '../../common/sync.service';
+import { FincasService } from '../fincas/fincas.service';
 import {
+  mockFincasService,
   mockCacheService,
   mockOfflineQueueService,
   mockSyncService,
@@ -24,6 +26,7 @@ describe('EmpleadoService', () => {
         { provide: CacheService, useValue: mockCacheService },
         { provide: OfflineQueueService, useValue: mockOfflineQueueService },
         { provide: SyncService, useValue: mockSyncService },
+        { provide: FincasService, useValue: mockFincasService },
       ],
     }).compile();
 

@@ -23,26 +23,24 @@ export class LotesService extends BaseOfflineService<Lote> {
     return this.findAllOffline(() =>
       this.repo.createQueryBuilder('lote')
         .leftJoinAndSelect('lote.cultivos', 'cultivo')
+        .where('lote.idfinca = :f', { f: this.idfinca })
         .getMany()
     );
   }
 
   findOne(id: number) {
-    return this.findOneOffline(id, () => this.repo.findOneBy({ idlote: id }));
+    return this.findOneOffline(id, () => this.repo.findOneBy(this.where({ idlote: id })));
   }
 
   create(data: Partial<Lote>) {
-    return this.createOffline(data, () => this.repo.save(this.repo.create(data)));
+    return this.createOffline(data, () => this.repo.save(this.repo.create(this.withFinca(data))));
   }
 
   update(id: number, data: Partial<Lote>) {
-    return this.updateOffline(id, data, async () => {
-      await this.repo.update(id, data);
-      return this.repo.findOneBy({ idlote: id });
-    });
+    return this.updateOffline(id, data, () => this.updateEnFinca(id, data));
   }
 
   remove(id: number) {
-    return this.removeOffline(id, () => this.repo.delete(id).then(() => {}));
+    return this.removeOffline(id, () => this.deleteEnFinca(id));
   }
 }

@@ -17,6 +17,17 @@ export class Cultivo {
   @PrimaryGeneratedColumn({ type: "integer", name: "idcultivo" })
   idcultivo: number;
 
+  /** Tenant (finca dueña del dato) */
+  @Column("integer", { name: "idfinca" })
+  idfinca: number;
+
+  /** CU-05: tipo de cultivo (maíz, café, palma...) */
+  @Column("character varying", { name: "tipo", nullable: true, length: 100 })
+  tipo: string | null;
+
+  @Column("boolean", { name: "activo", default: () => "true" })
+  activo: boolean;
+
   @Column("character varying", {
     name: "nombrelote",
     nullable: true,

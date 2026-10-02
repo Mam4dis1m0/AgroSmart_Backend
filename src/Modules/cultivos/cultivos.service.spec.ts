@@ -5,7 +5,9 @@ import { Cultivo } from '../../Entidades/entities/Cultivo';
 import { CacheService } from '../../common/cache.service';
 import { OfflineQueueService } from '../../common/offline-queue.service';
 import { SyncService } from '../../common/sync.service';
+import { PlanService } from '../../auth/plan.service';
 import {
+  mockPlanService,
   mockCacheService,
   mockOfflineQueueService,
   mockSyncService,
@@ -24,6 +26,7 @@ describe('CultivosService', () => {
         { provide: CacheService, useValue: mockCacheService },
         { provide: OfflineQueueService, useValue: mockOfflineQueueService },
         { provide: SyncService, useValue: mockSyncService },
+        { provide: PlanService, useValue: mockPlanService },
       ],
     }).compile();
 

@@ -23,6 +23,10 @@ export class Tarea {
   @PrimaryGeneratedColumn({ type: "integer", name: "idtarea" })
   idtarea: number;
 
+  /** Tenant (finca dueña del dato) */
+  @Column("integer", { name: "idfinca" })
+  idfinca: number;
+
   @Column("character varying", {
     name: "tipoactividad",
     nullable: true,

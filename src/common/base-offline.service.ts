@@ -6,14 +6,22 @@
 //
 // Todos los servicios del proyecto extienden esta clase.
 
-import { Logger } from '@nestjs/common';
+import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import { ObjectLiteral, Repository } from 'typeorm';
+import { TenantContext } from '../auth/tenant-context';
 import { CacheService } from './cache.service';
 import { OfflineQueueService } from './offline-queue.service';
 import { SyncService } from './sync.service';
 
 export abstract class BaseOfflineService<T extends ObjectLiteral> {
   protected readonly logger: Logger;
+
+  /**
+   * true  → la tabla tiene columna idfinca (multi-tenant): toda lectura/escritura se
+   *         filtra por la finca activa de la sesión.
+   * false → tabla global (usuario, administrador, empleado); sobrescribir en la subclase.
+   */
+  protected readonly escopadoPorFinca: boolean = true;
 
   constructor(
     protected readonly repo: Repository<T>,
@@ -30,12 +38,91 @@ export abstract class BaseOfflineService<T extends ObjectLiteral> {
 
   // ── Helpers de caché ────────────────────────────────────────────────────
 
+  // ── Multi-tenant ────────────────────────────────────────────────────────
+
+  /** Finca activa de la sesión (lanza 403 si no hay). */
+  protected get idfinca(): number {
+    return TenantContext.requireFinca();
+  }
+
+  /** Fuerza la finca de la sesión: el cliente nunca decide en qué finca escribe (RNF-16). */
+  protected withFinca<D extends object>(dto: D): D & { idfinca: number } {
+    return { ...dto, idfinca: this.idfinca };
+  }
+
+  /** Quita idfinca de lo que mande el cliente (evita mover un registro a otra finca). */
+  protected sinFinca<D extends object>(dto: D): Omit<D, 'idfinca'> {
+    const { idfinca: _ignorado, ...resto } = dto as any;
+    return resto;
+  }
+
+  /** where con la finca activa:  this.where({ idlote: id }) */
+  protected where(extra: Record<string, unknown> = {}): any {
+    return { ...extra, idfinca: this.idfinca };
+  }
+
+  /**
+   * Verifica que un registro referenciado (lote, cultivo, insumo...) pertenezca a la
+   * finca activa. Solo en rutas online; en offline lo respaldan las FK compuestas de la BD.
+   */
+  protected async assertEnFinca(
+    repo: Repository<any>,
+    where: Record<string, unknown>,
+    etiqueta: string,
+  ): Promise<void> {
+    const existe = await repo.exist({ where: { ...where, idfinca: this.idfinca } });
+    if (!existe) {
+      throw new NotFoundException(`${etiqueta} no existe en esta finca`);
+    }
+  }
+
+  /** UPDATE acotado a la finca activa. Devuelve la fila actualizada o responde 404. */
+  protected async updateEnFinca(id: number | string, data: object): Promise<T | null> {
+    const where = this.where({ [this.pkField]: id });
+    const res = await this.repo.update(where, this.sinFinca(data) as any);
+    if (!res.affected) {
+      throw new NotFoundException(`${this.entityName} #${id} no existe en esta finca`);
+    }
+    return this.repo.findOneBy(where);
+  }
+
+  /**
+   * DELETE acotado a la finca activa. 404 si no existe en esta finca;
+   * 409 si tiene dependencias (RNF-06: no se borra lo que otros registros usan).
+   */
+  protected async deleteEnFinca(id: number | string): Promise<void> {
+    try {
+      const res = await this.repo.delete(this.where({ [this.pkField]: id }));
+      if (!res.affected) {
+        throw new NotFoundException(`${this.entityName} #${id} no existe en esta finca`);
+      }
+    } catch (err: any) {
+      if (err?.code === '23503') {
+        throw new ConflictException(
+          `No se puede eliminar: ${this.entityName} #${id} tiene registros asociados.`,
+        );
+      }
+      throw err;
+    }
+  }
+
+  // Las claves incluyen la finca: el caché de una finca jamás se sirve a otra.
+  //  · empleado → además su id: sus listas vienen filtradas (solo lo suyo) y no deben
+  //    mezclarse con las del administrador
+  //  · sin finca (comprador, admin que aún no elige) → se aísla por usuario
+  protected tenantTag(): string {
+    const u = TenantContext.user();
+    if (!u) return 'f0';
+    if (u.idfinca === null) return `u${u.idusuario}`;
+    return u.rol === 'empleado' ? `f${u.idfinca}e${u.idusuario}` : `f${u.idfinca}`;
+  }
+
   protected cacheKeyAll(): string {
-    return `${this.entityName}_all`;
+    return `${this.entityName}_${this.tenantTag()}_all`;
   }
 
   protected cacheKeyOne(id: number | string): string {
-    return `${this.entityName}_${id}`;
+    return `${this.entityName}_${this.tenantTag()}_${id}`;
   }
 
   /** Reemplaza o inserta un elemento en la lista cacheada */
@@ -99,10 +186,11 @@ export abstract class BaseOfflineService<T extends ObjectLiteral> {
 
     // Modo offline: ID temporal con prefijo string para distinguirlo claramente
     // Nunca se envía a la BD — se reemplaza cuando se sincroniza
+    const scopedDto = this.escopadoPorFinca ? this.withFinca(dto) : dto;
     const tempId = `offline_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const tempItem = {
       [this.pkField]: tempId,
-      ...dto,
+      ...scopedDto,
       _offline: true,
       _pendiente: 'CREATE',
     };
@@ -112,7 +200,7 @@ export abstract class BaseOfflineService<T extends ObjectLiteral> {
 
     // En la cola NO incluir el pkField temporal — la BD asignará el ID real
     const dtoSinPk = Object.fromEntries(
-      Object.entries(dto).filter(([k]) => k !== this.pkField),
+      Object.entries(scopedDto).filter(([k]) => k !== this.pkField),
     );
     this.offlineQueue.add(this.entityName, 'CREATE', dtoSinPk);
     this.logger.log(`📥 ${this.entityName} creado offline (id temporal: ${tempId})`);
@@ -135,10 +223,18 @@ export abstract class BaseOfflineService<T extends ObjectLiteral> {
     }
 
     // Modo offline: actualiza caché y encola
+    const cambios = this.escopadoPorFinca ? this.sinFinca(dto) : dto;
     const cached = this.cache.get<any>(this.cacheKeyOne(id)) ?? { [this.pkField]: id };
-    const updated = { ...cached, ...dto, _pendiente: 'UPDATE' };
+    const updated = { ...cached, ...cambios, _pendiente: 'UPDATE' };
     this.updateCacheList(updated);
-    this.offlineQueue.add(this.entityName, 'UPDATE', { [this.pkField]: id, ...dto });
+    // idfinca viaja en la cola: SyncService solo actualiza filas de ESA finca
+    this.offlineQueue.add(
+      this.entityName,
+      'UPDATE',
+      this.escopadoPorFinca
+        ? { [this.pkField]: id, ...cambios, idfinca: TenantContext.idfinca() }
+        : { [this.pkField]: id, ...cambios },
+    );
     this.logger.log(`📥 ${this.entityName} #${id} actualizado offline`);
 
     return {
@@ -159,7 +255,13 @@ export abstract class BaseOfflineService<T extends ObjectLiteral> {
     }
 
     this.removeCacheItem(id);
-    this.offlineQueue.add(this.entityName, 'DELETE', { [this.pkField]: id });
+    this.offlineQueue.add(
+      this.entityName,
+      'DELETE',
+      this.escopadoPorFinca
+        ? { [this.pkField]: id, idfinca: TenantContext.idfinca() }
+        : { [this.pkField]: id },
+    );
     this.logger.log(`📥 ${this.entityName} #${id} marcado para eliminar offline`);
 
     return {
