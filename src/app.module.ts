@@ -5,7 +5,7 @@ import { ConfigModule } from '@nestjs/config';
 import { DatabaseModule } from './common/database.module';
 import { CommonModule }   from './common/common.module';
 import { AuthModule }     from './auth/auth.module';
-
+import { MensajeriaModule } from './Modules/mensajeria/mensajeria.module';
 import { UsuariosModule }        from './Modules/usuarios/usuarios.module';
 import { AdministradorModule }   from './Modules/administrador/administrador.module';
 import { EmpleadoModule }        from './Modules/empleado/empleado.module';
@@ -36,7 +36,8 @@ import { ReportesModule }        from './Modules/reportes/reportes.module';
     ConfigModule.forRoot({ isGlobal: true }),
     DatabaseModule,
     CommonModule,
-    AuthModule,          // JWT + guards globales (rol, finca activa, plan)
+    AuthModule,   
+      MensajeriaModule,       // JWT + guards globales (rol, finca activa, plan)
     UsuariosModule,
     AdministradorModule,
     EmpleadoModule,

@@ -378,15 +378,16 @@ export class UsuariosService extends BaseOfflineService<Usuario> {
    *  · comprador     → token sin finca (solo catálogo público)
    */
   private construirSesion(s: SesionCache, extra: Record<string, unknown> = {}) {
+    const fincas = s.fincas ?? []; // tolera cachés antiguos sin el campo `fincas`
     let rol: Rol = s.role;
     let idfinca: number | null = null;
 
     if (s.role !== 'comprador') {
-      if (s.fincas.length === 1) {
-        idfinca = s.fincas[0].idfinca;
-        rol = s.fincas[0].rol;
-      } else if (s.fincas.length > 1) {
-        rol = s.fincas.some((f) => f.rol === 'admin') ? 'admin' : 'empleado';
+      if (fincas.length === 1) {
+        idfinca = fincas[0].idfinca;
+        rol = fincas[0].rol;
+      } else if (fincas.length > 1) {
+        rol = fincas.some((f) => f.rol === 'admin') ? 'admin' : 'empleado';
       }
     }
 
@@ -398,8 +399,8 @@ export class UsuariosService extends BaseOfflineService<Usuario> {
       ),
       token,
       idfinca,
-      fincas: s.fincas,
-      requiereSeleccionFinca: s.role !== 'comprador' && s.fincas.length > 1,
+      fincas,
+      requiereSeleccionFinca: s.role !== 'comprador' && fincas.length > 1,
       ...extra,
     };
   }
@@ -436,6 +437,12 @@ export class UsuariosService extends BaseOfflineService<Usuario> {
     if (!cached?.contrasena) {
       throw new UnauthorizedException(
         'Sin conexión a internet. Este usuario no ha iniciado sesión antes en este dispositivo.',
+      );
+    }
+    // Caché guardado por una versión anterior (sin fincas): obliga a iniciar sesión online una vez
+    if (!Array.isArray(cached.fincas)) {
+      throw new UnauthorizedException(
+        'Sin conexión. Inicia sesión una vez con internet para actualizar tus datos en este dispositivo.',
       );
     }
     const valida = await bcrypt.compare(contrasena, cached.contrasena);

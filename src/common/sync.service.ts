@@ -78,12 +78,24 @@ export class SyncService implements OnModuleInit {
       await Promise.race([
         this.dataSource.query('SELECT 1'),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('timeout')), 4000),
+          setTimeout(() => reject(new Error('timeout')), 8000),
         ),
       ]);
       return true;
     } catch {
       return false;
+    }
+  }
+
+  private aplicarEstado(online: boolean) {
+    if (online !== this._online) {
+      this._online = online;
+      this.logger.log(
+        online
+          ? '✅ Conexión restaurada — modo online'
+          : '📴 Conexión perdida — modo offline',
+      );
+      if (online) this.precargarEmpleados();
     }
   }
 
@@ -93,17 +105,16 @@ export class SyncService implements OnModuleInit {
       return this._online;
     }
     this._lastCheck = now;
-    this.checkConnection().then(online => {
-      if (online !== this._online) {
-        this._online = online;
-        this.logger.log(
-          online
-            ? '✅ Conexión restaurada — modo online'
-            : '📴 Conexión perdida — modo offline',
-        );
-        if (online) this.precargarEmpleados();
-      }
-    });
+
+    // Si estábamos offline, esperamos el chequeo real: así el primer intento después de
+    // recuperar la conexión (o de un arranque lento) ya no cae por error al modo offline.
+    if (!this._online) {
+      this.aplicarEstado(await this.checkConnection());
+      return this._online;
+    }
+
+    // Si estábamos online, no bloqueamos la petición: se actualiza en segundo plano.
+    this.checkConnection().then(online => this.aplicarEstado(online));
     return this._online;
   }
 
