@@ -111,7 +111,9 @@ export class MensajeriaService {
 
   /**
    * Una sola consulta para la bandeja (idhilo = null) y para el detalle de un hilo.
-   * Nunca expone correo, teléfono, cédula ni foto de perfil de la otra persona.
+   * Nunca expone correo, cédula ni foto de perfil de la otra persona.
+   * El teléfono SOLO se devuelve en el detalle de un hilo (idhilo != null): lo usa la app
+   * para enviar mensajes por SMS cuando no hay internet.
    */
   private resumenHilos(user: AuthUser, idhilo: number | null, soloConMensajes: boolean) {
     return this.ds.query(
@@ -123,6 +125,7 @@ export class MensajeriaService {
               o.estado AS "estadoOrden",
               u.idusuario AS "otroId",
               NULLIF(trim(concat_ws(' ', u.primernombre, u.primerapellido)), '') AS "otroNombre",
+              CASE WHEN $2::int IS NOT NULL THEN u.telefono END AS "otroTelefono",
               lm.contenido AS "ultimoContenido", lm.idremitente AS "ultimoRemitente",
               (SELECT COUNT(*)::int FROM mensaje_mercado m
                 WHERE m.idhilo = h.idhilo AND m.idremitente <> $1 AND m.leido_at IS NULL) AS "noLeidos"

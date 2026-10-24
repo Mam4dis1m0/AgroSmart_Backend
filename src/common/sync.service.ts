@@ -1,6 +1,6 @@
 // src/common/sync.service.ts
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron, CronExpression, Interval } from '@nestjs/schedule';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { OfflineQueueService } from './offline-queue.service';
@@ -13,8 +13,14 @@ export class SyncService implements OnModuleInit {
   private syncing = false;
   private _online = false;
   private _lastCheck = 0;
-  private reintentos = new Map<string, number>(); // ← agrega esta línea
-  private readonly CHECK_INTERVAL_MS = 10_000;
+  private reintentos = new Map<string, number>();
+  private readonly CHECK_INTERVAL_MS = 5_000;
+  private readonly CHECK_TIMEOUT_MS = 3_000;
+  private readonly PROBE_STALE_MS = 10_000;
+
+  // Sonda de conexión en vuelo (evita acumular queries colgadas en el pool)
+  private probe: Promise<boolean> | null = null;
+  private probeStartedAt = 0;
 
   constructor(
     @InjectDataSource() private dataSource: DataSource,
@@ -34,6 +40,16 @@ export class SyncService implements OnModuleInit {
       this.logger.warn('📴 Sin conexión a Supabase — modo offline activado');
       this.logger.warn('   Los datos se guardarán en caché local (.cache/)');
     }
+  }
+
+  /**
+   * Latido: revisa la conexión cada 5 s aunque no haya peticiones ni cola.
+   * Es lo que hace que la consola avise "Conexión perdida / restaurada" al instante.
+   */
+  @Interval(5_000)
+  async heartbeat() {
+    this._lastCheck = Date.now();
+    this.aplicarEstado(await this.checkConnection());
   }
 
   /**
@@ -70,20 +86,43 @@ export class SyncService implements OnModuleInit {
     }
   }
 
+  /**
+   * Comprueba la conexión con un SELECT 1.
+   * - Timeout corto (3 s) para detectar la caída rápido.
+   * - Solo hay una sonda en vuelo a la vez: si la anterior sigue colgada
+   *   (socket muerto), no se abre otra conexión del pool; se espera al timeout.
+   *   Si lleva más de PROBE_STALE_MS colgada, se lanza una nueva para no
+   *   quedar bloqueados cuando el wifi vuelva.
+   */
   private async checkConnection(): Promise<boolean> {
+    const ahora = Date.now();
+    if (!this.probe || ahora - this.probeStartedAt > this.PROBE_STALE_MS) {
+      this.probeStartedAt = ahora;
+      const sonda: Promise<boolean> = (async () => {
+        try {
+          if (!this.dataSource.isInitialized) {
+            await this.dataSource.initialize();
+          }
+          await this.dataSource.query('SELECT 1');
+          return true;
+        } catch {
+          return false;
+        }
+      })().finally(() => {
+        if (this.probe === sonda) this.probe = null;
+      });
+      this.probe = sonda;
+    }
+
+    let timer: NodeJS.Timeout;
+    const timeout = new Promise<boolean>(resolve => {
+      timer = setTimeout(() => resolve(false), this.CHECK_TIMEOUT_MS);
+    });
+
     try {
-      if (!this.dataSource.isInitialized) {
-        await this.dataSource.initialize();
-      }
-      await Promise.race([
-        this.dataSource.query('SELECT 1'),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('timeout')), 8000),
-        ),
-      ]);
-      return true;
-    } catch {
-      return false;
+      return await Promise.race([this.probe!, timeout]);
+    } finally {
+      clearTimeout(timer!);
     }
   }
 
@@ -97,6 +136,12 @@ export class SyncService implements OnModuleInit {
       );
       if (online) this.precargarEmpleados();
     }
+  }
+
+  /** Marca el servidor como offline de inmediato (p. ej. cuando una query falla por conexión). */
+  marcarOffline() {
+    this._lastCheck = Date.now();
+    this.aplicarEstado(false);
   }
 
   async isOnline(): Promise<boolean> {
@@ -118,80 +163,81 @@ export class SyncService implements OnModuleInit {
     return this._online;
   }
 
- @Cron(CronExpression.EVERY_30_SECONDS)
-async uploadPending() {
-  if (this.syncing) return;
+  @Cron(CronExpression.EVERY_30_SECONDS)
+  async uploadPending() {
+    if (this.syncing) return;
 
-  const pending = this.queue.getAll();
-  if (pending.length === 0) return;
+    const pending = this.queue.getAll();
+    if (pending.length === 0) return;
 
-  const online = await this.isOnline();
-  if (!online) {
-    this.logger.log(`📴 Sin internet — ${pending.length} operaciones en cola esperando`);
-    return;
-  }
+    const online = await this.isOnline();
+    if (!online) {
+      this.logger.log(`📴 Sin internet — ${pending.length} operaciones en cola esperando`);
+      return;
+    }
 
-  this.syncing = true;
-  this.logger.log(`🔄 Sincronizando ${pending.length} operación(es) pendiente(s)...`);
-
-  const orden = ['tarea', 'asignacion_tarea', 'detalle_tarea', '_email_pendiente', '_registro_usuario'];
-  const sorted = [
-    ...pending.filter(op => op.entity === 'tarea'),
-    ...pending.filter(op => op.entity === 'asignacion_tarea'),
-    ...pending.filter(op => op.entity === 'detalle_tarea'),
-    ...pending.filter(op => op.entity === '_email_pendiente'),
-    ...pending.filter(op => op.entity === '_registro_usuario'),
-    ...pending.filter(op => !orden.includes(op.entity)),
-  ];
-
-  for (const op of sorted) {
+    this.syncing = true;
     try {
-      await this.executeOperation(op);
-      this.queue.remove(op.id);
-      this.reintentos.delete(op.id); // ← limpia al sincronizar exitosamente
-      this.logger.log(`  ✅ ${op.operation} en ${op.entity} — sincronizado`);
-    } catch (err) {
-      const msg: string = (err as any)?.message ?? String(err);
+      this.logger.log(`🔄 Sincronizando ${pending.length} operación(es) pendiente(s)...`);
 
-      const irrecuperable =
-        msg.startsWith('[DESCARTAR]') ||
-        msg.includes('out of range') ||
-        msg.includes('invalid input syntax') ||
-        (msg.includes('column') && msg.includes('does not exist')) ||
-        msg.includes('violates not-null');
+      const orden = ['tarea', 'asignacion_tarea', 'detalle_tarea', '_email_pendiente', '_registro_usuario'];
+      const sorted = [
+        ...pending.filter(op => op.entity === 'tarea'),
+        ...pending.filter(op => op.entity === 'asignacion_tarea'),
+        ...pending.filter(op => op.entity === 'detalle_tarea'),
+        ...pending.filter(op => op.entity === '_email_pendiente'),
+        ...pending.filter(op => op.entity === '_registro_usuario'),
+        ...pending.filter(op => !orden.includes(op.entity)),
+      ];
 
-      if (irrecuperable) {
-        this.queue.remove(op.id);
-        this.reintentos.delete(op.id);
-        this.logger.error(`  ❌ [DESCARTADO] ${op.id} — error irrecuperable: ${msg}`);
-      } else {
-        const intentos = (this.reintentos.get(op.id) ?? 0) + 1;
-        this.reintentos.set(op.id, intentos);
-
-        if (intentos >= 20) {
+      for (const op of sorted) {
+        try {
+          await this.executeOperation(op);
           this.queue.remove(op.id);
           this.reintentos.delete(op.id);
-          this.logger.error(`  ❌ [DESCARTADO por límite] ${op.id} — después de 20 intentos: ${msg}`);
-        } else {
-          this.logger.error(`  ❌ ${op.id} falló (intento ${intentos}/20): ${msg}`);
+          this.logger.log(`  ✅ ${op.operation} en ${op.entity} — sincronizado`);
+        } catch (err) {
+          const msg: string = (err as any)?.message ?? String(err);
+
+          const irrecuperable =
+            msg.startsWith('[DESCARTAR]') ||
+            msg.includes('out of range') ||
+            msg.includes('invalid input syntax') ||
+            (msg.includes('column') && msg.includes('does not exist')) ||
+            msg.includes('violates not-null');
+
+          if (irrecuperable) {
+            this.queue.remove(op.id);
+            this.reintentos.delete(op.id);
+            this.logger.error(`  ❌ [DESCARTADO] ${op.id} — error irrecuperable: ${msg}`);
+          } else {
+            const intentos = (this.reintentos.get(op.id) ?? 0) + 1;
+            this.reintentos.set(op.id, intentos);
+
+            if (intentos >= 20) {
+              this.queue.remove(op.id);
+              this.reintentos.delete(op.id);
+              this.logger.error(`  ❌ [DESCARTADO por límite] ${op.id} — después de 20 intentos: ${msg}`);
+            } else {
+              this.logger.error(`  ❌ ${op.id} falló (intento ${intentos}/20): ${msg}`);
+            }
+          }
         }
       }
+
+      const restantes = this.queue.count();
+      if (restantes === 0) {
+        this.logger.log('✅ Cola vacía — todo sincronizado con Supabase');
+      } else {
+        this.logger.warn(`⚠️  Quedan ${restantes} operaciones sin sincronizar`);
+      }
+    } finally {
+      this.syncing = false;
     }
   }
 
-  const restantes = this.queue.count();
-  if (restantes === 0) {
-    this.logger.log('✅ Cola vacía — todo sincronizado con Supabase');
-  } else {
-    this.logger.warn(`⚠️  Quedan ${restantes} operaciones sin sincronizar`);
-  }
-
-  this.syncing = false;
-}
-
   private async executeOperation(op: any) {
     const { entity, operation, data } = op;
-    
 
     // ── Email pendiente ─────────────────────────────────────────────────────
     if (entity === '_email_pendiente') {

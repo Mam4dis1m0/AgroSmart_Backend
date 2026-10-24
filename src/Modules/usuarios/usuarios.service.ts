@@ -17,6 +17,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
@@ -406,32 +407,53 @@ export class UsuariosService extends BaseOfflineService<Usuario> {
   }
 
   async login(email: string, contrasena: string) {
-    const online = await this.sync.isOnline();
-
-    if (online) {
-      const usuario = await this.buscarConHash({ email });
-      // Mismo mensaje para "no existe" y "contraseña incorrecta": no revela qué correos existen
-      const valida = !!usuario?.contrasena && (await bcrypt.compare(contrasena, usuario.contrasena));
-      if (!usuario || !valida) throw new UnauthorizedException('Correo o contraseña incorrectos');
-      if (usuario.activo === false) throw new UnauthorizedException('Tu cuenta no está activa. Contacta al administrador.');
-
-      const role   = await this.rolBase(usuario.idusuario);
-      const fincas = role === 'comprador' ? [] : await this.fincas.listarDeUsuario(usuario.idusuario);
-
-      const sesion: SesionCache = {
-        idusuario:      usuario.idusuario,
-        primernombre:   usuario.primernombre,
-        primerapellido: usuario.primerapellido,
-        email:          usuario.email as string,
-        role,
-        contrasena:     usuario.contrasena as string,
-        fotoperfil:     usuario.fotoperfil ?? null,
-        fincas,
-      };
-      this.cache.set(this.claveLogin(sesion.email), sesion);
-      return this.construirSesion(sesion);
+    if (await this.sync.isOnline()) {
+      try {
+        // Si el wifi acaba de caerse, isOnline() aún puede decir "online" y la query se queda
+        // colgada: se limita el tiempo y, si falla por conexión, se cae al modo offline.
+        return await this.conTimeout(this.loginOnline(email, contrasena), 5000);
+      } catch (err) {
+        if (err instanceof HttpException) throw err; // credenciales incorrectas, cuenta inactiva…
+        this.logger.warn(`📴 Login online falló por conexión (${(err as any)?.message ?? err}) — usando modo offline`);
+        this.sync.marcarOffline();
+      }
     }
+    return this.loginOffline(email, contrasena);
+  }
 
+  private conTimeout<T>(promesa: Promise<T>, ms: number): Promise<T> {
+    let timer: NodeJS.Timeout;
+    const limite = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('timeout')), ms);
+    });
+    return Promise.race([promesa, limite]).finally(() => clearTimeout(timer));
+  }
+
+  private async loginOnline(email: string, contrasena: string) {
+    const usuario = await this.buscarConHash({ email });
+    // Mismo mensaje para "no existe" y "contraseña incorrecta": no revela qué correos existen
+    const valida = !!usuario?.contrasena && (await bcrypt.compare(contrasena, usuario.contrasena));
+    if (!usuario || !valida) throw new UnauthorizedException('Correo o contraseña incorrectos');
+    if (usuario.activo === false) throw new UnauthorizedException('Tu cuenta no está activa. Contacta al administrador.');
+
+    const role   = await this.rolBase(usuario.idusuario);
+    const fincas = role === 'comprador' ? [] : await this.fincas.listarDeUsuario(usuario.idusuario);
+
+    const sesion: SesionCache = {
+      idusuario:      usuario.idusuario,
+      primernombre:   usuario.primernombre,
+      primerapellido: usuario.primerapellido,
+      email:          usuario.email as string,
+      role,
+      contrasena:     usuario.contrasena as string,
+      fotoperfil:     usuario.fotoperfil ?? null,
+      fincas,
+    };
+    this.cache.set(this.claveLogin(sesion.email), sesion);
+    return this.construirSesion(sesion);
+  }
+
+  private async loginOffline(email: string, contrasena: string) {
     // ── Offline: valida contra el hash guardado la última vez que inició sesión aquí ──
     const cached = this.cache.get<SesionCache>(this.claveLogin(email));
     if (!cached?.contrasena) {

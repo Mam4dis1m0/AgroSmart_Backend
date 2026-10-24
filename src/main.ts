@@ -1,5 +1,8 @@
 // src/main.ts
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
+// ...resto de imports
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
@@ -17,9 +20,14 @@ async function bootstrap() {
     console.error(err);
   });
 
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     abortOnError: false,
   });
+
+  // Las fotos viajan en base64 dentro del JSON (perfil y marketplace). El límite por defecto de
+  // Express es 100 KB y responde 413 a cualquier foto normal; el DTO ya acepta hasta ~6 MB.
+  app.useBodyParser('json', { limit: '12mb' });
+  app.useBodyParser('urlencoded', { limit: '12mb', extended: true });
 
   // Contexto por petición (usuario + finca activa). OBLIGATORIO: sin esto el AuthGuard
   // no puede aislar los datos por finca y rechaza la petición.
