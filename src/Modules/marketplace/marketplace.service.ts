@@ -18,7 +18,8 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { DataSource, EntityManager, In } from 'typeorm';
 import { v2 as cloudinary } from 'cloudinary';
 import { Listado } from '../../Entidades/entities/Listado';
 import { ListadoFoto } from '../../Entidades/entities/ListadoFoto';
@@ -35,11 +36,20 @@ import { filas } from '../../common/sql';
 import { PasarelaPagoService } from '../suscripciones/pasarela-pago.service';
 
 // AJUSTAR: valores de negocio de ejemplo
-const EARLY_ACCESS_HORAS = 24;       // Premium publica y ve productos antes (RF-43)
 const DESTACADO_PRECIO = 9900;       // COP, listado destacado (RF-32)
 const DESTACADO_DIAS = 7;
 
 const redondear = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * RF-43 · Publicación según el plan del VENDEDOR: Premium aparece de inmediato; Freemium espera
+ * estos minutos antes de ser visible en el catálogo (para todos los compradores por igual).
+ * Se lee en cada uso para respetar el .env (p. ej. MARKETPLACE_ESPERA_FREEMIUM_MIN=2 en una demo).
+ */
+const minutosEsperaFreemium = (): number => {
+  const v = Number(process.env.MARKETPLACE_ESPERA_FREEMIUM_MIN ?? 60);
+  return Number.isFinite(v) && v >= 0 ? v : 60;
+};
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -63,10 +73,14 @@ export class MarketplaceService {
     }
   }
 
-  /** ¿Quien consulta tiene Premium? (finca con acceso anticipado). Los compradores no. */
-  private async esPremium(user: AuthUser): Promise<boolean> {
-    if (user.rol === 'comprador' || user.idfinca === null) return false;
-    return this.planes.tieneFuncion(user.idfinca, 'early_access');
+  /**
+   * Hasta cuándo queda oculta una oferta que se publica ahora: null si la finca vendedora es
+   * Premium (publicación inmediata) o si la espera configurada es 0.
+   */
+  private async visibleDesde(idfinca: number): Promise<Date | null> {
+    if (await this.planes.tieneFuncion(idfinca, 'early_access')) return null;
+    const min = minutosEsperaFreemium();
+    return min > 0 ? new Date(Date.now() + min * 60_000) : null;
   }
 
   /** Carrito/wishlist: compradores siempre; administradores solo con Premium (CU-46). */
@@ -100,7 +114,6 @@ export class MarketplaceService {
 
   async catalogo(q: CatalogoQueryDto, user: AuthUser) {
     this.exigirOnline();
-    const premium = await this.esPremium(user);
 
     const params: unknown[] = [];
     const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
@@ -108,8 +121,8 @@ export class MarketplaceService {
     const where: string[] = [
       `l.estado = 'PUBLICADO'`,
       `l.volumendisponible > 0`,
-      // Acceso anticipado: los listados Premium recién publicados los ven primero los Premium
-      `(l.earlyaccesshasta IS NULL OR l.earlyaccesshasta <= now() OR ${p(premium)}::boolean OR l.idfinca = ${p(user.idfinca)}::int)`,
+      // Ofertas de vendedores Freemium en espera: aún no visibles (salvo para la propia finca)
+      `(l.earlyaccesshasta IS NULL OR l.earlyaccesshasta <= now() OR l.idfinca = ${p(user.idfinca)}::int)`,
     ];
     if (q.q) where.push(`(l.titulo ILIKE '%' || ${p(q.q)} || '%' OR l.descripcion ILIKE '%' || $${params.length} || '%')`);
     if (q.categoria) where.push(`l.categoria = ${p(q.categoria)}`);
@@ -144,14 +157,13 @@ export class MarketplaceService {
 
   async detalle(idlistado: number, user: AuthUser) {
     this.exigirOnline();
-    const premium = await this.esPremium(user);
     const [fila] = await this.ds.query(
       `SELECT ${this.columnasPublicas(false)}
          FROM listado l JOIN finca f ON f.idfinca = l.idfinca
         WHERE l.idlistado = $1
           AND l.estado = 'PUBLICADO'
-          AND (l.earlyaccesshasta IS NULL OR l.earlyaccesshasta <= now() OR $2::boolean OR l.idfinca = $3::int)`,
-      [idlistado, premium, user.idfinca],
+          AND (l.earlyaccesshasta IS NULL OR l.earlyaccesshasta <= now() OR l.idfinca = $2::int)`,
+      [idlistado, user.idfinca],
     );
     if (!fila) throw new NotFoundException('El producto no está disponible');
     return fila;
@@ -201,9 +213,8 @@ export class MarketplaceService {
       }
     }
 
-    const tieneAcceso = await this.planes.tieneFuncion(idfinca, 'early_access');
     const publicar = !dto.borrador;
-    const holdHasta = publicar && tieneAcceso ? new Date(Date.now() + EARLY_ACCESS_HORAS * 3600 * 1000) : null;
+    const holdHasta = publicar ? await this.visibleDesde(idfinca) : null;
 
     const guardado = await this.ds.transaction(async (m) => {
       return m.save(
@@ -229,7 +240,7 @@ export class MarketplaceService {
       );
     });
 
-    // CU-34: avisar a compradores cercanos (si hay acceso anticipado se difiere: aún no lo ve el público)
+    // CU-34: avisar a compradores cercanos. Si queda en espera, lo hace publicarOfertasEnEspera().
     if (publicar && !holdHasta) {
       await this.notificarCompradoresCercanos(guardado);
     }
@@ -244,6 +255,7 @@ export class MarketplaceService {
 
   async actualizarListado(idlistado: number, dto: UpdateListadoDto, idfinca: number) {
     this.exigirOnline();
+    let publicadaAhora = false;
     await this.ds.transaction(async (m) => {
       const [actual] = await m.query(
         `SELECT estado, volumendisponible::float8 AS volumen FROM listado WHERE idlistado = $1 AND idfinca = $2 FOR UPDATE`,
@@ -261,6 +273,12 @@ export class MarketplaceService {
       }
       if (dto.estado !== undefined) cambios.estado = dto.estado;
 
+      // Un borrador que se publica sigue la misma regla de espera que una oferta nueva
+      if (actual.estado === 'BORRADOR' && cambios.estado === 'PUBLICADO') {
+        cambios.earlyaccesshasta = await this.visibleDesde(idfinca);
+        publicadaAhora = cambios.earlyaccesshasta === null;
+      }
+
       if (Object.keys(cambios).length > 0) {
         await m.update(Listado, { idlistado, idfinca }, cambios as any);
       }
@@ -271,7 +289,35 @@ export class MarketplaceService {
         }
       }
     });
+    if (publicadaAhora) {
+      const l = await this.ds.getRepository(Listado).findOneBy({ idlistado });
+      if (l) await this.notificarCompradoresCercanos(l);
+    }
     return this.listadoPropio(idlistado, idfinca);
+  }
+
+  /**
+   * Cada minuto libera las ofertas Freemium cuya espera terminó: desde ese momento las ve
+   * cualquier comprador, y se envía el aviso de "oferta cerca de ti" que se había diferido.
+   */
+  @Cron(CronExpression.EVERY_MINUTE)
+  async publicarOfertasEnEspera(): Promise<void> {
+    if (!this.ds.isInitialized) return;
+    try {
+      const liberadas: number[] = filas<{ idlistado: number }>(
+        await this.ds.query(
+          `UPDATE listado SET earlyaccesshasta = NULL
+            WHERE earlyaccesshasta IS NOT NULL AND earlyaccesshasta <= now()
+            RETURNING idlistado`,
+        ),
+      ).map((r) => r.idlistado);
+      if (!liberadas.length) return;
+      const ofertas = await this.ds.getRepository(Listado).find({ where: { idlistado: In(liberadas), estado: 'PUBLICADO' } });
+      for (const l of ofertas) await this.notificarCompradoresCercanos(l);
+      this.logger.log(`Ofertas visibles tras la espera Freemium: ${liberadas.join(', ')}`);
+    } catch (err) {
+      this.logger.warn(`No se pudieron liberar ofertas en espera: ${(err as Error).message}`);
+    }
   }
 
   /** Con órdenes asociadas solo se pausa (historial de ventas); sin órdenes se borra. */

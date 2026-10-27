@@ -18,7 +18,6 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { PlanService } from '../../auth/plan.service';
 import { AuthUser } from '../../auth/tenant-context';
 import { filas } from '../../common/sql';
 import { CrearHiloDto, EnviarMensajeDto, ListarMensajesQueryDto } from '../../dto/mensajeria.dto';
@@ -33,7 +32,6 @@ export class MensajeriaService {
 
   constructor(
     private readonly ds: DataSource,
-    private readonly planes: PlanService,
     private readonly gateway: MensajeriaGateway,
   ) {}
 
@@ -43,12 +41,6 @@ export class MensajeriaService {
     }
   }
 
-  /** Mismo criterio que el catálogo: el acceso anticipado es solo para fincas Premium. */
-  private async esPremium(user: AuthUser): Promise<boolean> {
-    if (user.rol === 'comprador' || user.idfinca === null) return false;
-    return this.planes.tieneFuncion(user.idfinca, 'early_access');
-  }
-
   // ═════════════════════════════════════════════════════════════════════════
   //  HILOS
   // ═════════════════════════════════════════════════════════════════════════
@@ -56,18 +48,18 @@ export class MensajeriaService {
   /** «Chatear con el vendedor»: crea el hilo o devuelve el existente (idempotente). */
   async abrirHilo(dto: CrearHiloDto, user: AuthUser) {
     this.exigirOnline();
-    const premium = await this.esPremium(user);
 
-    // Solo se puede escribir sobre ofertas que el usuario puede ver en el catálogo,
-    // o sobre una oferta en la que ya tiene una orden (aunque luego se haya pausado).
+    // Solo se puede escribir sobre ofertas que el usuario puede ver en el catálogo (mismo criterio:
+    // las de vendedores Freemium en espera aún no son visibles), o sobre una oferta en la que ya
+    // tiene una orden (aunque luego se haya pausado).
     const [l] = await this.ds.query(
       `SELECT l.idlistado, l.idvendedor
          FROM listado l
         WHERE l.idlistado = $1
           AND ( (l.estado = 'PUBLICADO'
-                 AND (l.earlyaccesshasta IS NULL OR l.earlyaccesshasta <= now() OR $2::boolean OR l.idfinca = $3::int))
-                OR EXISTS (SELECT 1 FROM orden_compra o WHERE o.idlistado = l.idlistado AND o.idcomprador = $4::int) )`,
-      [dto.idlistado, premium, user.idfinca, user.idusuario],
+                 AND (l.earlyaccesshasta IS NULL OR l.earlyaccesshasta <= now() OR l.idfinca = $2::int))
+                OR EXISTS (SELECT 1 FROM orden_compra o WHERE o.idlistado = l.idlistado AND o.idcomprador = $3::int) )`,
+      [dto.idlistado, user.idfinca, user.idusuario],
     );
     if (!l) throw new NotFoundException('El producto no está disponible');
     if (l.idvendedor === user.idusuario) {
