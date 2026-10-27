@@ -8,6 +8,7 @@
 --
 --  Reconstruido a partir de src/Entidades/entities/*.ts. Orden correcto de ejecución:
 --    1) este archivo   2) 01_migracion_multitenant.sql
+--    3) 02_mensajeria.sql   4) 03_foto_lote.sql
 -- =====================================================================
 
 CREATE TABLE IF NOT EXISTS public.usuario (
@@ -38,6 +39,7 @@ CREATE TABLE IF NOT EXISTS public.lote (
   areahectareas  numeric(10,2),
   ubicacion      varchar(255),
   descripcion    text,
+  imagenurl      text,
   activo         boolean DEFAULT true
 );
 

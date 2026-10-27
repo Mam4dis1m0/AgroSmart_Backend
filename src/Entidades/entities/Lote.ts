@@ -43,6 +43,9 @@ export class Lote {
   @Column("text", { name: "descripcion", nullable: true })
   descripcion: string | null;
 
+  @Column("text", { name: "imagenurl", nullable: true })
+  imagenurl: string | null;
+
   @Column("boolean", { name: "activo", nullable: true, default: () => "true" })
   activo: boolean | null;
 
