@@ -1,5 +1,5 @@
 // src/dto/tarea.dto.ts
-import { IsString, IsNumber, IsOptional, IsInt, IsDateString, Min } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsInt, IsDateString, IsBoolean, IsIn, Min } from 'class-validator';
 
 // ── Sin cambios ───────────────────────────────────────────────────────────────
 export class CreateTareaDto {
@@ -44,4 +44,14 @@ export class AsignarTareaDto {
   @IsOptional()
   @IsNumber()
   pagoacordado?: number;
+
+  // true = reasignación: las asignaciones abiertas de otros empleados pasan a "Reasignada"
+  @IsOptional()
+  @IsBoolean()
+  reemplazar?: boolean;
+
+  // sugerida = el admin aceptó una sugerencia del sistema (queda registrado para análisis posterior)
+  @IsOptional()
+  @IsIn(['manual', 'sugerida'])
+  origenasignacion?: string;
 }

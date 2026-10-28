@@ -49,9 +49,20 @@ export class TareasController {
     return this.tareasService.asignar(+id, dto);
   }
 
+  // :id es el de la ASIGNACIÓN. `at` (opcional) es la hora real del toque si el celular estaba sin red.
+  @Patch(':id/iniciar')
+  iniciar(@Param('id') id: string, @Body() body: { at?: string }) {
+    return this.tareasService.iniciar(+id, body?.at);
+  }
+
+  @Patch(':id/finalizar')
+  finalizar(@Param('id') id: string, @Body() body: { at?: string }) {
+    return this.tareasService.completar(+id, body?.at);
+  }
+
   @Patch(':id/completar')
-  completar(@Param('id') id: string) {
-    return this.tareasService.completar(+id);
+  completar(@Param('id') id: string, @Body() body: { at?: string }) {
+    return this.tareasService.completar(+id, body?.at);
   }
 
   // ── NUEVO ─────────────────────────────────────────────────────────────────

@@ -46,6 +46,10 @@ export class Finca {
   @Column("boolean", { name: "activo", default: () => "true" })
   activo: boolean;
 
+  /** Cómo se asignan las tareas: manual | sugerida | automatica. */
+  @Column("character varying", { name: "modoasignacion", length: 20, default: () => "'sugerida'" })
+  modoasignacion: string;
+
   @ManyToOne(() => Plan)
   @JoinColumn([{ name: "idplan", referencedColumnName: "idplan" }])
   plan: Plan;

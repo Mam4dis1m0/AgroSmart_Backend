@@ -1,0 +1,117 @@
+import { Test } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { PlantillasService } from './plantillas.service';
+import { PlantillaLabor } from '../../Entidades/entities/PlantillaLabor';
+import { PlantillaLaborInsumo } from '../../Entidades/entities/PlantillaLaborInsumo';
+import { Cultivo } from '../../Entidades/entities/Cultivo';
+import { Tarea } from '../../Entidades/entities/Tarea';
+import { createMockRepository, conSesion, sesionAdmin } from '../../test/mocks/common-providers.mock';
+import { sumarDias, hoy } from './fechas';
+import { AsignacionSugeridaService } from '../tareas/asignacion-sugerida.service';
+
+describe('PlantillasService.vistaPrevia', () => {
+  let service: PlantillasService;
+  const plantillaRepo: any = createMockRepository();
+  const insumoRepo: any = createMockRepository();
+  const cultivoRepo: any = createMockRepository();
+  const tareaRepo: any = createMockRepository();
+  const query = jest.fn();
+
+  const base = (o: Partial<PlantillaLabor>): PlantillaLabor => ({
+    idplantilla: 1, idfinca: null, idplantillabase: null, categoria: 'ciclo_corto', tipocultivo: null,
+    actividad: 'Siembra', etapa: null, base: 'siembra', diasoffset: 0, esrecurrente: false,
+    frecuenciadias: null, diasfin: null, horasestimadas: 8, numpersonas: 2, prioridad: 'Alta',
+    modalidadpago: 'tiempo', activa: true, ...o,
+  });
+
+  beforeEach(async () => {
+    plantillaRepo.manager = { query };
+    insumoRepo.createQueryBuilder = jest.fn(() => ({
+      where: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+    }));
+    const mod = await Test.createTestingModule({
+      providers: [
+        PlantillasService,
+        { provide: getRepositoryToken(PlantillaLabor), useValue: plantillaRepo },
+        { provide: getRepositoryToken(PlantillaLaborInsumo), useValue: insumoRepo },
+        { provide: getRepositoryToken(Cultivo), useValue: cultivoRepo },
+        { provide: getRepositoryToken(Tarea), useValue: tareaRepo },
+        { provide: AsignacionSugeridaService, useValue: { modoAsignacion: jest.fn(), asignarAutomatico: jest.fn() } },
+      ],
+    }).compile();
+    service = mod.get(PlantillasService);
+  });
+
+  afterEach(() => { jest.resetAllMocks(); });
+
+  /** Respuestas de las 3 consultas SQL: tarifa promedio, costo de insumos y plantillas ya creadas. */
+  const sql = (tarifa: number, yaCreadas: any[] = []) =>
+    query.mockImplementation(async (texto: string) => {
+      if (texto.includes('AVG(')) return [{ tarifa }];
+      if (texto.includes('plantilla_labor_insumo')) return [];
+      return yaCreadas;
+    });
+
+  it('programa las labores desde la siembra y estima el costo con la tarifa del equipo', async () => {
+    const siembra = sumarDias(hoy(), 10);
+    cultivoRepo.findOneBy.mockResolvedValue({ idcultivo: 3, tipo: 'Maíz', categoria: null, fechasiembra: siembra, fechacosechaestimada: null });
+    plantillaRepo.find
+      .mockResolvedValueOnce([]) // la finca aún no tiene copia
+      .mockResolvedValueOnce([
+        base({ idplantilla: 1, actividad: 'Preparación del suelo', diasoffset: -7, horasestimadas: 8, numpersonas: 2 }),
+        base({ idplantilla: 2, actividad: 'Cosecha', base: 'cosecha_estimada' }),
+      ]);
+    sql(5000);
+
+    const r = await conSesion(sesionAdmin, () => service.vistaPrevia(3));
+
+    expect(r.categoria).toBe('ciclo_corto');
+    expect(r.desdeBase).toBe(true);
+    const prep = r.items.find((i) => i.actividad === 'Preparación del suelo')!;
+    expect(prep.fecha).toBe(sumarDias(siembra, -7));
+    expect(prep.costoestimado).toBe(80000); // 8 h × 2 personas × 5.000
+    expect(prep.pasada).toBe(false);
+    expect(prep.omitida).toBeNull();
+    // Sin fecha de cosecha estimada no se puede programar la cosecha
+    expect(r.items.find((i) => i.actividad === 'Cosecha')!.omitida).toMatch(/cosecha estimada/);
+  });
+
+  it('marca como pasadas las labores de un cultivo ya sembrado y como creadas las que ya existen', async () => {
+    cultivoRepo.findOneBy.mockResolvedValue({ idcultivo: 4, tipo: 'Palma', categoria: null, fechasiembra: '2019-03-15', fechacosechaestimada: null });
+    plantillaRepo.find
+      .mockResolvedValueOnce([base({ idplantilla: 20, idfinca: 1, idplantillabase: 5, categoria: 'palma', actividad: 'Fertilización' })])
+      .mockResolvedValueOnce([]);
+    sql(0, [{ idplantilla: 20, idplantillabase: 5 }]);
+
+    const r = await conSesion(sesionAdmin, () => service.vistaPrevia(4));
+
+    expect(r.categoria).toBe('palma');
+    expect(r.desdeBase).toBe(false);
+    expect(r.items[0].pasada).toBe(true);
+    expect(r.items[0].yaCreada).toBe(true);
+  });
+
+  it('pide elegir categoría cuando el tipo de cultivo no se reconoce', async () => {
+    cultivoRepo.findOneBy.mockResolvedValue({ idcultivo: 9, tipo: 'Quinua', categoria: null });
+
+    await expect(conSesion(sesionAdmin, () => service.vistaPrevia(9))).rejects.toThrow('categoría de manejo');
+  });
+
+  it('usa la categoría elegida por el admin aunque el tipo no se reconozca', async () => {
+    cultivoRepo.findOneBy.mockResolvedValue({ idcultivo: 9, tipo: 'Quinua', categoria: 'ciclo_corto', fechasiembra: '2026-01-01' });
+    plantillaRepo.find.mockResolvedValue([]);
+    sql(0);
+
+    const r = await conSesion(sesionAdmin, () => service.vistaPrevia(9));
+
+    expect(r.categoria).toBe('ciclo_corto');
+  });
+
+  it('no encuentra cultivos de otra finca', async () => {
+    cultivoRepo.findOneBy.mockResolvedValue(null);
+
+    await expect(conSesion(sesionAdmin, () => service.vistaPrevia(77))).rejects.toThrow('no existe en esta finca');
+    expect(cultivoRepo.findOneBy).toHaveBeenCalledWith({ idcultivo: 77, idfinca: 1 });
+  });
+});

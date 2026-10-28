@@ -15,6 +15,7 @@ import { CultivosModule }        from './Modules/cultivos/cultivos.module';
 import { ProduccionPalmaModule } from './Modules/produccion-palma/produccion-palma.module';
 import { InsumosModule }         from './Modules/insumos/insumos.module';
 import { TareasModule }          from './Modules/tareas/tareas.module';
+import { PlantillasModule }      from './Modules/plantillas/plantillas.module';
 import { DetalleTareaModule }    from './Modules/detalle-tarea/detalle-tarea.module';
 import { AsignacionTareaModule } from './Modules/asignacion-tarea/asignacion-tarea.module';
 import { EmpleadoCosechaModule } from './Modules/empleado-cosecha/empleado-cosecha.module';
@@ -47,6 +48,7 @@ import { ReportesModule }        from './Modules/reportes/reportes.module';
     ProduccionPalmaModule,
     InsumosModule,
     TareasModule,
+    PlantillasModule,
     DetalleTareaModule,
     AsignacionTareaModule,
     EmpleadoCosechaModule,
