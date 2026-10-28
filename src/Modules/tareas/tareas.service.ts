@@ -7,7 +7,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
+import { filas } from '../../common/sql';
 import { Tarea } from '../../Entidades/entities/Tarea';
 import { Empleado } from '../../Entidades/entities/Empleado';
 import { Cultivo } from '../../Entidades/entities/Cultivo';
@@ -331,6 +332,7 @@ export class TareasService {
     const online = await this.sync.isOnline();
     const admin = TenantContext.requireUser();
     const idfinca = this.idfinca;
+    const origen = dto.origenasignacion === 'sugerida' ? 'sugerida' : 'manual';
 
     if (online) {
       const tarea = await this.repo.findOne({
@@ -369,6 +371,7 @@ export class TareasService {
           fechaasignacion:  dto.fechaasignacion ?? new Date().toISOString().split('T')[0],
           estado:           dto.estado          ?? 'Asignado',
           pagoacordado:     dto.pagoacordado    ?? null,
+          origenasignacion: origen,
           idtarea:          { idtarea: idTarea }                as any,
           idempleado:       { idusuario: dto.idempleado }       as any,
           idadminasignador: { idusuario: admin.idusuario }      as any,
@@ -376,6 +379,19 @@ export class TareasService {
       }
 
       const saved = await this.asignacionRepo.save(asignacion);
+
+      // Reasignar: las asignaciones abiertas de otros empleados quedan como "Reasignada" (se conserva
+      // su historial y las horas ya trabajadas) para no dejar la tarea esperando a quien ya no la hace.
+      if (dto.reemplazar) {
+        await this.asignacionRepo
+          .createQueryBuilder()
+          .update(AsignacionTarea)
+          .set({ estado: 'Reasignada' })
+          .where('idfinca = :f AND idtarea = :t AND idasigtarea <> :a AND estado IS DISTINCT FROM :c', {
+            f: idfinca, t: idTarea, a: saved.idasigtarea, c: 'Completado',
+          })
+          .execute();
+      }
 
       // ── Email al empleado ────────────────────────────────────────────────
       const emailEmpleado = empleado.idusuario2?.email ?? '';
@@ -486,9 +502,11 @@ export class TareasService {
     });
 
     this.cache.set(this.k('all'), tareasActualizadas);
+    const { reemplazar: _reemplazar, ...dtoCola } = dto; // no es una columna de asignacion_tarea
     this.offlineQueue.add('asignacion_tarea', 'CREATE', {
       idtarea: idTarea,
-      ...dto,
+      ...dtoCola,
+      origenasignacion: origen,
       idadminasignador: admin.idusuario,
       idfinca,
     });
@@ -505,32 +523,114 @@ export class TareasService {
     };
   }
 
-  // ── completar ─────────────────────────────────────────────────────────────
-  // ERROR 3 CORREGIDO: notificarTareaCompletada sigue recibiendo 3 argumentos
-  // (emailAdmin, nombreTarea, nombreEmpleado) — no se cambió su firma.
-  async completar(idAsignacion: number): Promise<AsignacionTarea> {
+  // ── tiempos reales: iniciar / completar ───────────────────────────────────
+
+  /**
+   * Instante en que ocurrió la acción. Si el celular estaba sin red, el cliente manda la hora
+   * en que realmente se pulsó el botón; se descarta si es futura o absurdamente antigua.
+   */
+  private instante(at?: string | Date | null): Date {
+    const ahora = new Date();
+    if (!at) return ahora;
+    const d = new Date(at);
+    if (isNaN(d.getTime())) return ahora;
+    if (d.getTime() > ahora.getTime() + 5 * 60_000) return ahora;
+    if (d.getTime() < ahora.getTime() - 14 * 24 * 3_600_000) return ahora;
+    return d;
+  }
+
+  private async asignacionPropia(idAsignacion: number): Promise<AsignacionTarea> {
     const user = TenantContext.requireUser();
     const asignacion = await this.asignacionRepo.findOne({
       where: { idasigtarea: idAsignacion, idfinca: this.idfinca },
       relations: ['idtarea', 'idempleado', 'idempleado.idusuario2', 'idadminasignador', 'idadminasignador.idusuario2'],
     });
     if (!asignacion) throw new NotFoundException(`Asignación #${idAsignacion} no encontrada.`);
-
-    // Un empleado solo completa SUS asignaciones
+    // Un empleado solo opera SUS asignaciones
     if (user.rol === 'empleado' && asignacion.idempleado?.idusuario !== user.idusuario) {
       throw new ForbiddenException('Esta asignación no es tuya');
     }
+    return asignacion;
+  }
 
-    // Actualizar asignación
-    asignacion.estado = 'Completado';
+  /** Marca el inicio real del trabajo (queda la hora); la tarea pasa a "En progreso". */
+  async iniciar(idAsignacion: number, at?: string | null): Promise<AsignacionTarea> {
+    const asignacion = await this.asignacionPropia(idAsignacion);
+    if (asignacion.estado === 'Completado') {
+      throw new BadRequestException('La asignación ya está completada');
+    }
+
+    const inicio = this.instante(at);
+    asignacion.estado = 'En progreso';
+    asignacion.fechainicio = asignacion.fechainicio ?? inicio; // reanudar no pisa la hora original
     await this.asignacionRepo.save(asignacion);
 
-    // 🔥 ACTUALIZAR LA TAREA PRINCIPAL (esto es lo que faltaba)
     if (asignacion.idtarea) {
-      await this.repo.update(
-        { idtarea: asignacion.idtarea.idtarea, idfinca: this.idfinca },
-        { estado: 'Completado' },
-      );
+      const idtarea = asignacion.idtarea.idtarea;
+      await this.repo.update({ idtarea, idfinca: this.idfinca }, { estado: 'En progreso' });
+      // Primera vez que alguien empieza esta tarea
+      if (!asignacion.idtarea.fechainicio) {
+        await this.repo.update({ idtarea, idfinca: this.idfinca }, { fechainicio: inicio });
+      }
+      this.cache.delete(this.k(String(idtarea)));
+    }
+    this.cache.delete(this.k('all'));
+    return asignacion;
+  }
+
+  /** Costo real de la tarea: insumos usados + mano de obra (tiempo × tarifa, o pago acordado) + transporte. */
+  private async calcularCostoReal(idtarea: number): Promise<number> {
+    const [r] = filas<{ insumos: number; mano: number; transporte: number }>(
+      await this.repo.manager.query(
+        `SELECT
+           COALESCE((SELECT SUM(d.cantidadusada * COALESCE(i.costounitario, 0))
+                       FROM detalle_tarea d JOIN insumo i ON i.idinsumo = d.idinsumo
+                      WHERE d.idtarea = $1 AND d.idfinca = $2), 0)::float8 AS insumos,
+           COALESCE((SELECT SUM(CASE
+                        WHEN COALESCE(a.horastrabajadas, 0) = 0 AND COALESCE(a.jornadastrabajadas, 0) = 0
+                          THEN COALESCE(a.pagoacordado, 0)
+                        ELSE COALESCE(a.horastrabajadas, 0)    * COALESCE(e.montoporhora, 0)
+                           + COALESCE(a.jornadastrabajadas, 0) * COALESCE(e.montoporjornal, 0)
+                      END)
+                       FROM asignacion_tarea a LEFT JOIN empleado e ON e.idusuario = a.idempleado
+                      WHERE a.idtarea = $1 AND a.idfinca = $2), 0)::float8 AS mano,
+           COALESCE((SELECT costotransporte FROM tarea WHERE idtarea = $1 AND idfinca = $2), 0)::float8 AS transporte`,
+        [idtarea, this.idfinca],
+      ),
+    );
+    return Math.round(((r?.insumos ?? 0) + (r?.mano ?? 0) + (r?.transporte ?? 0)) * 100) / 100;
+  }
+
+  // ── completar ─────────────────────────────────────────────────────────────
+  // notificarTareaCompletada sigue recibiendo 3 argumentos (emailAdmin, nombreTarea, nombreEmpleado).
+  async completar(idAsignacion: number, at?: string | null): Promise<AsignacionTarea> {
+    const asignacion = await this.asignacionPropia(idAsignacion);
+    const fin = this.instante(at);
+
+    // Actualizar asignación; si hubo cronómetro, las horas salen solas (la edición manual manda)
+    asignacion.estado = 'Completado';
+    asignacion.fechafin = asignacion.fechafin ?? fin;
+    if (asignacion.fechainicio && !asignacion.horastrabajadas) {
+      const horas = (fin.getTime() - new Date(asignacion.fechainicio).getTime()) / 3_600_000;
+      asignacion.horastrabajadas = Math.round(Math.max(horas, 0) * 100) / 100;
+    }
+    await this.asignacionRepo.save(asignacion);
+
+    // La tarea solo se completa cuando TODAS sus asignaciones terminaron
+    if (asignacion.idtarea) {
+      const idtarea = asignacion.idtarea.idtarea;
+      const pendientes = await this.asignacionRepo.count({
+        where: { idfinca: this.idfinca, idtarea: idtarea as any, estado: Not(In(['Completado', 'Reasignada'])) },
+      });
+      if (!pendientes) {
+        await this.repo.update({ idtarea, idfinca: this.idfinca }, { estado: 'Completado' });
+        try {
+          const costoreal = await this.calcularCostoReal(idtarea);
+          await this.repo.update({ idtarea, idfinca: this.idfinca }, { fechafin: fin, costoreal });
+        } catch (err: any) {
+          this.logger.warn(`No se pudo calcular el costo real de la tarea #${idtarea}: ${err.message}`);
+        }
+      }
     }
 
     // Email al admin
@@ -550,30 +650,51 @@ export class TareasService {
   }
 
   async completarConEvidencia(idTarea: number, body: any, fotoPath: string | null) {
-    const {
-      observaciones, tipoactividad, fechaprogramada,
-      nombreEmpleado, lote, idasigtarea,
-    } = body;
+    // Del cliente solo se acepta lo que escribe la persona (observaciones), la asignación y la hora
+    // real del toque; actividad, fecha, empleado y lote salen de la base de datos.
+    const { observaciones, idasigtarea, at } = body;
 
-    // 1. Completar la asignación o la tarea
+    const tarea = await this.repo.findOne({
+      where: { idtarea: idTarea, idfinca: this.idfinca },
+      relations: ['idcultivo', 'idcultivo.idlote', 'idadmincreador', 'idadmincreador.idusuario2'],
+    });
+    if (!tarea) throw new NotFoundException(`Tarea #${idTarea} no encontrada.`);
+
+    // 1. Completar la asignación (o la tarea, si no tiene asignación)
+    let idEmpleado = TenantContext.requireUser().idusuario;
     if (idasigtarea) {
-      await this.completar(Number(idasigtarea));
+      const asig = await this.asignacionRepo.findOne({
+        where: { idasigtarea: Number(idasigtarea), idfinca: this.idfinca },
+        relations: ['idtarea', 'idempleado'],
+      });
+      if (!asig || asig.idtarea?.idtarea !== idTarea) {
+        throw new BadRequestException('La asignación no corresponde a esta tarea');
+      }
+      idEmpleado = asig.idempleado?.idusuario ?? idEmpleado;
+      await this.completar(Number(idasigtarea), at);
     } else {
       await this.update(idTarea, { estado: 'Completado' } as any);
     }
 
-    // 2. Generar PDF
+    // 2. Datos del reporte desde la BD
+    const [u] = filas<{ nombre: string }>(
+      await this.repo.manager.query(
+        `SELECT trim(concat_ws(' ', primernombre, primerapellido)) AS nombre FROM usuario WHERE idusuario = $1`,
+        [idEmpleado],
+      ),
+    );
+    const nombreEmpleado = u?.nombre || 'Empleado';
+    const tipoactividad = tarea.tipoactividad ?? 'Sin nombre';
+    const fechaprogramada = tarea.fechaprogramada ?? '';
+    const lote = [tarea.idcultivo?.idlote?.nombre, tarea.idcultivo?.tipo].filter(Boolean).join(' · ');
+
     const pdfBuffer = await this.generarPDF({
       idtarea: idTarea, tipoactividad, fechaprogramada,
       nombreEmpleado, lote, observaciones, fotoPath,
     });
 
-    // 3. Obtener email del admin desde la tarea
-    const tareaConAdmin = await this.repo.findOne({
-      where: { idtarea: idTarea, idfinca: this.idfinca },
-      relations: ['idadmincreador', 'idadmincreador.idusuario2'],
-    });
-    const emailAdmin = tareaConAdmin?.idadmincreador?.idusuario2?.email ?? '';
+    // 3. Email del admin que creó la tarea
+    const emailAdmin = tarea.idadmincreador?.idusuario2?.email ?? '';
 
     // 4. Enviar correo con el PDF adjunto
     if (emailAdmin) {

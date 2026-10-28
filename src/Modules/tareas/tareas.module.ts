@@ -9,6 +9,8 @@ import { MailModule }      from '../../mail/mail.module';
 import { CommonModule }    from '../../common/common.module';
 import { Insumo } from '../../Entidades/entities/Insumo';
 import { DetalleTarea } from '../../Entidades/entities/DetalleTarea';
+import { AsignacionSugeridaService } from './asignacion-sugerida.service';
+import { AsignacionSugeridaController } from './asignacion-sugerida.controller';
 
 @Module({
   imports: [
@@ -16,7 +18,8 @@ import { DetalleTarea } from '../../Entidades/entities/DetalleTarea';
     MailModule,
     CommonModule,
   ],
-  controllers: [TareasController],
-  providers: [TareasService],
+  controllers: [TareasController, AsignacionSugeridaController],
+  providers: [TareasService, AsignacionSugeridaService],
+  exports: [AsignacionSugeridaService],
 })
 export class TareasModule {}

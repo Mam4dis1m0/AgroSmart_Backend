@@ -25,6 +25,10 @@ export class Cultivo {
   @Column("character varying", { name: "tipo", nullable: true, length: 100 })
   tipo: string | null;
 
+  /** Categoría de manejo (ciclo_corto, perenne_arboreo, palma…): decide qué plantilla de labores aplica. */
+  @Column("character varying", { name: "categoria", nullable: true, length: 40 })
+  categoria: string | null;
+
   @Column("boolean", { name: "activo", default: () => "true" })
   activo: boolean;
 

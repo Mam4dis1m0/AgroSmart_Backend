@@ -54,6 +54,16 @@ export class AsignacionTarea {
   })
   pagoacordado: number | null;  // ✅
 
+  @Column("timestamp without time zone", { name: "fechainicio", nullable: true })
+  fechainicio: Date | null;
+
+  @Column("timestamp without time zone", { name: "fechafin", nullable: true })
+  fechafin: Date | null;
+
+  /** manual | sugerida | automatica */
+  @Column("character varying", { name: "origenasignacion", nullable: true, length: 20 })
+  origenasignacion: string | null;
+
   @ManyToOne(() => Administrador, (administrador) => administrador.asignacionTareas)
   @JoinColumn([{ name: "idadminasignador", referencedColumnName: "idusuario" }])
   idadminasignador: Administrador;

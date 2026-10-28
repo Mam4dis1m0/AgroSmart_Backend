@@ -124,5 +124,74 @@ describe('TareasService', () => {
       expect(mockCacheService.delete).toHaveBeenCalledWith('tareas_f1_7');
       expect(mockCacheService.delete).toHaveBeenCalledWith('tareas_f1_all');
     });
+
+    it('NO completa la tarea mientras otra asignación siga abierta (cuadrilla)', async () => {
+      mockAsignacionTareaRepository.findOne.mockResolvedValue({ ...asignacionBase });
+      mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
+      mockAsignacionTareaRepository.count.mockResolvedValue(1);
+
+      await conSesion(sesionAdmin, () => service.completar(10));
+
+      expect(mockTareaRepository.update).not.toHaveBeenCalledWith(
+        expect.anything(), expect.objectContaining({ estado: 'Completado' }),
+      );
+      mockAsignacionTareaRepository.count.mockReset();
+    });
+
+    it('calcula las horas trabajadas a partir del cronómetro si no se digitaron', async () => {
+      const inicio = new Date(Date.now() - 2.5 * 3_600_000);
+      mockAsignacionTareaRepository.findOne.mockResolvedValue({ ...asignacionBase, fechainicio: inicio });
+      mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
+
+      const result = await conSesion(sesionAdmin, () => service.completar(10));
+
+      expect(result.horastrabajadas).toBeCloseTo(2.5, 1);
+      expect(result.fechafin).toBeInstanceOf(Date);
+    });
+
+    it('respeta las horas ya digitadas a mano', async () => {
+      const inicio = new Date(Date.now() - 5 * 3_600_000);
+      mockAsignacionTareaRepository.findOne.mockResolvedValue({ ...asignacionBase, fechainicio: inicio, horastrabajadas: 3 });
+      mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
+
+      const result = await conSesion(sesionAdmin, () => service.completar(10));
+
+      expect(result.horastrabajadas).toBe(3);
+    });
+  });
+
+  describe('iniciar()', () => {
+    const asig = () => ({
+      idasigtarea: 10, estado: 'Asignado', fechainicio: null,
+      idtarea: { idtarea: 7, fechainicio: null },
+      idempleado: { idusuario: 1 },
+    });
+
+    it('guarda la hora de inicio y pasa asignación y tarea a "En progreso"', async () => {
+      mockAsignacionTareaRepository.findOne.mockResolvedValue(asig());
+      mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
+
+      const result = await conSesion(sesionAdmin, () => service.iniciar(10));
+
+      expect(result.estado).toBe('En progreso');
+      expect(result.fechainicio).toBeInstanceOf(Date);
+      expect(mockTareaRepository.update).toHaveBeenCalledWith({ idtarea: 7, idfinca: 1 }, { estado: 'En progreso' });
+    });
+
+    it('usa la hora enviada por el celular (trabajo sin red) y no la del servidor', async () => {
+      const real = new Date(Date.now() - 3_600_000).toISOString();
+      mockAsignacionTareaRepository.findOne.mockResolvedValue(asig());
+      mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
+
+      const result = await conSesion(sesionAdmin, () => service.iniciar(10, real));
+
+      expect(result.fechainicio?.toISOString()).toBe(real);
+    });
+
+    it('rechaza iniciar una asignación ya completada', async () => {
+      mockAsignacionTareaRepository.findOne.mockResolvedValue({ ...asig(), estado: 'Completado' });
+
+      await expect(conSesion(sesionAdmin, () => service.iniciar(10))).rejects.toThrow('ya está completada');
+    });
   });
 });

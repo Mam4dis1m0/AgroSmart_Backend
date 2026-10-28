@@ -41,6 +41,9 @@ import { SolicitudContratacion } from '../Entidades/entities/SolicitudContrataci
 import { ChatConversacion } from '../Entidades/entities/ChatConversacion';
 import { ChatMensaje } from '../Entidades/entities/ChatMensaje';
 import { MensajeInterno } from '../Entidades/entities/MensajeInterno';
+import { PlantillaLabor } from '../Entidades/entities/PlantillaLabor';
+import { PlantillaLaborInsumo } from '../Entidades/entities/PlantillaLaborInsumo';
+import { TareaEvidencia } from '../Entidades/entities/TareaEvidencia';
 
 const logger = new Logger('DatabaseModule');
 
@@ -55,6 +58,7 @@ export const ALL_ENTITIES = [
   Anunciante, Anuncio, AnuncioImpresion,
   Nomina, NominaDetalle, PerfilTalento, SolicitudContratacion,
   ChatConversacion, ChatMensaje, MensajeInterno,
+  PlantillaLabor, PlantillaLaborInsumo, TareaEvidencia,
 ];
 
 const DataSourceProvider = {
