@@ -11,6 +11,11 @@ import { Insumo } from '../../Entidades/entities/Insumo';
 import { DetalleTarea } from '../../Entidades/entities/DetalleTarea';
 import { AsignacionSugeridaService } from './asignacion-sugerida.service';
 import { AsignacionSugeridaController } from './asignacion-sugerida.controller';
+import { TareaSugerenciasService } from './tarea-sugerencias.service';
+import { TareaSugerenciasController } from './tarea-sugerencias.controller';
+import { TareaEvidenciaService } from './tarea-evidencia.service';
+import { TareaEvidenciaController } from './tarea-evidencia.controller';
+import { AvisosTareasService } from './avisos-tareas.service';
 
 @Module({
   imports: [
@@ -18,8 +23,8 @@ import { AsignacionSugeridaController } from './asignacion-sugerida.controller';
     MailModule,
     CommonModule,
   ],
-  controllers: [TareasController, AsignacionSugeridaController],
-  providers: [TareasService, AsignacionSugeridaService],
+  controllers: [TareasController, AsignacionSugeridaController, TareaSugerenciasController, TareaEvidenciaController],
+  providers: [TareasService, AsignacionSugeridaService, TareaSugerenciasService, TareaEvidenciaService, AvisosTareasService],
   exports: [AsignacionSugeridaService],
 })
 export class TareasModule {}

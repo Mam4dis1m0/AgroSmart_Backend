@@ -5,10 +5,13 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Not, Repository } from 'typeorm';
 import { filas } from '../../common/sql';
+import { TareaEvidenciaService } from './tarea-evidencia.service';
+import { COSTO_TAREA_SQL, DesgloseCosto, totalCosto } from './costos';
 import { Tarea } from '../../Entidades/entities/Tarea';
 import { Empleado } from '../../Entidades/entities/Empleado';
 import { Cultivo } from '../../Entidades/entities/Cultivo';
@@ -42,6 +45,7 @@ export class TareasService {
     private cache: CacheService,
     private offlineQueue: OfflineQueueService,
     private sync: SyncService,
+    @Optional() private evidencias?: TareaEvidenciaService,
   ) {}
 
   // ── Multi-tenant ──────────────────────────────────────────────────────────
@@ -393,6 +397,10 @@ export class TareasService {
           .execute();
       }
 
+      await this.notificar(
+        dto.idempleado, 'Nueva tarea asignada', `Te asignaron: ${tarea.tipoactividad ?? 'una tarea'}`, 'tarea_asignada', idTarea,
+      );
+
       // ── Email al empleado ────────────────────────────────────────────────
       const emailEmpleado = empleado.idusuario2?.email ?? '';
       if (emailEmpleado) {
@@ -578,27 +586,24 @@ export class TareasService {
     return asignacion;
   }
 
+  /** Aviso dentro de la app para una persona. Nunca interrumpe la operación que lo origina. */
+  private async notificar(idusuario: number | null | undefined, titulo: string, mensaje: string, tipo: string, idtarea: number) {
+    if (!idusuario) return;
+    try {
+      await this.repo.manager.query(
+        `INSERT INTO notificacion (idfinca, idusuariodestino, titulo, mensaje, tipo, tabla_origen, idregistro)
+         VALUES ($1, $2, $3, $4, $5, 'tarea', $6)`,
+        [this.idfinca, idusuario, titulo, mensaje, tipo, idtarea],
+      );
+    } catch (err: any) {
+      this.logger.warn(`No se pudo crear la notificación (${tipo}): ${err?.message}`);
+    }
+  }
+
   /** Costo real de la tarea: insumos usados + mano de obra (tiempo × tarifa, o pago acordado) + transporte. */
   private async calcularCostoReal(idtarea: number): Promise<number> {
-    const [r] = filas<{ insumos: number; mano: number; transporte: number }>(
-      await this.repo.manager.query(
-        `SELECT
-           COALESCE((SELECT SUM(d.cantidadusada * COALESCE(i.costounitario, 0))
-                       FROM detalle_tarea d JOIN insumo i ON i.idinsumo = d.idinsumo
-                      WHERE d.idtarea = $1 AND d.idfinca = $2), 0)::float8 AS insumos,
-           COALESCE((SELECT SUM(CASE
-                        WHEN COALESCE(a.horastrabajadas, 0) = 0 AND COALESCE(a.jornadastrabajadas, 0) = 0
-                          THEN COALESCE(a.pagoacordado, 0)
-                        ELSE COALESCE(a.horastrabajadas, 0)    * COALESCE(e.montoporhora, 0)
-                           + COALESCE(a.jornadastrabajadas, 0) * COALESCE(e.montoporjornal, 0)
-                      END)
-                       FROM asignacion_tarea a LEFT JOIN empleado e ON e.idusuario = a.idempleado
-                      WHERE a.idtarea = $1 AND a.idfinca = $2), 0)::float8 AS mano,
-           COALESCE((SELECT costotransporte FROM tarea WHERE idtarea = $1 AND idfinca = $2), 0)::float8 AS transporte`,
-        [idtarea, this.idfinca],
-      ),
-    );
-    return Math.round(((r?.insumos ?? 0) + (r?.mano ?? 0) + (r?.transporte ?? 0)) * 100) / 100;
+    const [r] = filas<DesgloseCosto>(await this.repo.manager.query(COSTO_TAREA_SQL, [idtarea, this.idfinca]));
+    return totalCosto(r);
   }
 
   // ── completar ─────────────────────────────────────────────────────────────
@@ -632,6 +637,15 @@ export class TareasService {
         }
       }
     }
+
+    // Aviso dentro de la app para quien asignó
+    await this.notificar(
+      asignacion.idadminasignador?.idusuario,
+      'Tarea completada',
+      `${asignacion.idempleado?.idusuario2?.primernombre ?? 'Un empleado'} completó: ${asignacion.idtarea?.tipoactividad ?? 'una tarea'}`,
+      'tarea_completada',
+      asignacion.idtarea?.idtarea ?? 0,
+    );
 
     // Email al admin
     const emailAdmin = asignacion.idadminasignador?.idusuario2?.email ?? '';
@@ -704,7 +718,18 @@ export class TareasService {
       );
     }
 
-    // 5. Limpiar foto temporal
+    // 5. Guardar la foto en la tarea (si falla, la tarea igual queda completada y el correo ya salió)
+    if (fotoPath && this.evidencias) {
+      try {
+        await this.evidencias.registrar(this.idfinca, idTarea, TenantContext.requireUser(), fotoPath, {
+          observaciones, idasigtarea: idasigtarea ? Number(idasigtarea) : null,
+        });
+      } catch (err: any) {
+        this.logger.warn(`No se pudo guardar la evidencia de la tarea #${idTarea}: ${err?.message}`);
+      }
+    }
+
+    // 6. Limpiar foto temporal
     if (fotoPath) {
       const fs = await import('fs');
       fs.unlink(fotoPath, () => {});
