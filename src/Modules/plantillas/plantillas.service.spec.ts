@@ -20,7 +20,7 @@ describe('PlantillasService.vistaPrevia', () => {
   const base = (o: Partial<PlantillaLabor>): PlantillaLabor => ({
     idplantilla: 1, idfinca: null, idplantillabase: null, categoria: 'ciclo_corto', tipocultivo: null,
     actividad: 'Siembra', etapa: null, base: 'siembra', diasoffset: 0, esrecurrente: false,
-    frecuenciadias: null, diasfin: null, horasestimadas: 8, numpersonas: 2, prioridad: 'Alta',
+    frecuenciadias: null, diasfin: null, horasestimadas: 8, numpersonas: 2, personasporhectarea: 2, prioridad: 'Alta',
     modalidadpago: 'tiempo', activa: true, ...o,
   });
 
@@ -94,17 +94,43 @@ describe('PlantillasService.vistaPrevia', () => {
     expect(r.items[0].yaCreada).toBe(true);
   });
 
-  it('escala las horas y el costo por las hectáreas del lote', async () => {
+  it('sugiere más personas cuando el lote es más grande, pero las horas para terminar no cambian', async () => {
     cultivoRepo.findOneBy.mockResolvedValue({ idcultivo: 3, tipo: 'Maíz', categoria: null, fechasiembra: sumarDias(hoy(), 10), fechacosechaestimada: null });
     plantillaRepo.find
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([base({ idplantilla: 1, actividad: 'Fertilización', diasoffset: 0, horasestimadas: 4, numpersonas: 1 })]);
+      .mockResolvedValueOnce([base({ idplantilla: 1, actividad: 'Fertilización', diasoffset: 0, horasestimadas: 4, personasporhectarea: 1 })]);
     sql(40000, [], 2.5);
 
     const r = await conSesion(sesionAdmin, () => service.vistaPrevia(3));
 
     expect(r.hectareas).toBe(2.5);
-    expect(r.items[0]).toMatchObject({ horasPorHectarea: 4, horasestimadas: 10, costoestimado: 50000 }); // 4 h × 2,5 ha × 5.000
+    // 1 persona por hectárea × 2,5 ha = 3 personas (se redondea hacia arriba); siguen siendo 4 h
+    expect(r.items[0]).toMatchObject({ personasPorHectarea: 1, numpersonas: 3, horasestimadas: 4, costoestimado: 60000 }); // 3 × 4 h × 5.000
+  });
+
+  it('con menos de una persona por hectárea sugiere al menos una', async () => {
+    cultivoRepo.findOneBy.mockResolvedValue({ idcultivo: 3, tipo: 'Maíz', categoria: null, fechasiembra: sumarDias(hoy(), 10), fechacosechaestimada: null });
+    plantillaRepo.find
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([base({ idplantilla: 1, actividad: 'Rotación de potreros', diasoffset: 0, horasestimadas: 2, personasporhectarea: 0.2 })]);
+    sql(40000, [], 1.5);
+
+    const r = await conSesion(sesionAdmin, () => service.vistaPrevia(3));
+
+    expect(r.items[0].numpersonas).toBe(1); // 0,2 × 1,5 ha = 0,3 → 1 persona
+  });
+
+  it('sin área registrada trata el lote como 1 hectárea', async () => {
+    cultivoRepo.findOneBy.mockResolvedValue({ idcultivo: 3, tipo: 'Maíz', categoria: null, fechasiembra: sumarDias(hoy(), 10), fechacosechaestimada: null });
+    plantillaRepo.find
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([base({ idplantilla: 1, actividad: 'Siembra', diasoffset: 0, horasestimadas: 8, personasporhectarea: 3 })]);
+    sql(40000, [], null);
+
+    const r = await conSesion(sesionAdmin, () => service.vistaPrevia(3));
+
+    expect(r.hectareas).toBeNull();
+    expect(r.items[0].numpersonas).toBe(3);
   });
 
   it('en un cultivo establecido las labores repetitivas se programan desde la próxima repetición, no en el pasado', async () => {
