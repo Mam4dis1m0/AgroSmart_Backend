@@ -64,9 +64,11 @@ POST /usuarios/login {email, contrasena}
 | Lecturas de cultivos, lotes, insumos, tareas | ✅ | ✅ (tareas: solo las suyas) | ❌ |
 | Crear/editar/borrar cultivos, lotes, insumos, tareas, asignaciones | ✅ | ❌ | ❌ |
 | Cambiar estado / registrar horas / consumir insumos de SU tarea | ✅ | ✅ | ❌ |
+| Enviar evidencia fotográfica de una tarea asignada | ❌ | ✅ | ❌ |
 | Personal, nómina, reportes, suscripción, dashboard | ✅ | ❌ | ❌ |
 | Publicar y vender en el Marketplace | ✅ | ❌ | ❌ |
-| Catálogo, ordenar, mis compras, carrito | ✅ (carrito: Premium) | catálogo | ✅ |
+| Catálogo, comprar, mis compras, carrito y wishlist | ✅ | catálogo | ✅ |
+| Mensajería del Marketplace | ✅ | ❌ | ✅ |
 
 ## 6. Endpoints nuevos (`/api/v1/...`)
 
@@ -87,7 +89,7 @@ POST /usuarios/login {email, contrasena}
 | | Freemium | Premium |
 |---|---|---|
 | Cultivos / empleados / fincas | 3 / 3 / 1 | ilimitado |
-| Nómina, control insumos-pagos, Excel, Talent Center, Chat IA, carrito/wishlist, acceso anticipado | ❌ | ✅ |
+| Nómina, control insumos-pagos, Excel, Talent Center, Chat IA, acceso anticipado | ❌ | ✅ |
 | Comisión Marketplace | 5 % | 3 % |
 
 Al cancelar o vencer, la finca vuelve a Freemium **conservando sus datos** (los límites solo frenan nuevos registros).

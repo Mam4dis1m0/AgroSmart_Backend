@@ -92,6 +92,7 @@ export class TareasController {
 
   // ── NUEVO ─────────────────────────────────────────────────────────────────
   @Post(':id/completar-con-evidencia')
+  @Roles('empleado')
   @UseInterceptors(
     FileInterceptor('evidencia', {
       storage: diskStorage({

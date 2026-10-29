@@ -934,6 +934,18 @@ export class TareasService {
     body: any,
     fotoPath: string | null,
   ) {
+    const user = TenantContext.requireUser();
+    if (user.rol !== 'empleado') {
+      throw new ForbiddenException(
+        'Solo el trabajador asignado puede enviar evidencia fotográfica',
+      );
+    }
+    if (!fotoPath || !body?.idasigtarea) {
+      throw new BadRequestException(
+        'La evidencia requiere una foto y una asignación de tarea',
+      );
+    }
+
     // Del cliente solo se acepta lo que escribe la persona (observaciones), la asignación y la hora
     // real del toque; actividad, fecha, empleado y lote salen de la base de datos.
     const { observaciones, idasigtarea, at } = body;
@@ -967,6 +979,11 @@ export class TareasService {
       if (!asig || asig.idtarea?.idtarea !== idTarea) {
         throw new BadRequestException(
           'La asignación no corresponde a esta tarea',
+        );
+      }
+      if (asig.idempleado?.idusuario !== user.idusuario) {
+        throw new ForbiddenException(
+          'Solo el trabajador asignado puede completar la tarea con evidencia',
         );
       }
       idEmpleado = asig.idempleado?.idusuario ?? idEmpleado;

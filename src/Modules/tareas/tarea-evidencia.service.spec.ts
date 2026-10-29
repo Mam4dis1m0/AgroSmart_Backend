@@ -32,10 +32,11 @@ describe('TareaEvidenciaService', () => {
     borrar.mockReset();
   });
 
-  it('sube la foto a la carpeta de la finca y la guarda ligada a la tarea', async () => {
+  it('el trabajador asignado sube la foto ligada a la tarea', async () => {
     subir.mockResolvedValue({ secure_url: 'https://cdn/foto.jpg' });
     const { ds, query } = dsCon({
       'SELECT 1 FROM tarea': [{ '?column?': 1 }],
+      'FROM asignacion_tarea': [{ '?column?': 1 }],
       'INSERT INTO tarea_evidencia': [{ idevidencia: 9 }],
       'FROM tarea_evidencia e': [
         {
@@ -52,7 +53,7 @@ describe('TareaEvidenciaService', () => {
     const r = await new TareaEvidenciaService(ds).registrar(
       1,
       3,
-      admin,
+      empleado,
       '/tmp/f.jpg',
       { observaciones: ' Listo ', idasigtarea: 4 },
     );
@@ -63,9 +64,17 @@ describe('TareaEvidenciaService', () => {
     );
     expect(query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO tarea_evidencia'),
-      [1, 3, 4, 1, 'https://cdn/foto.jpg', 'Listo'],
+      [1, 3, 4, 5, 'https://cdn/foto.jpg', 'Listo'],
     );
     expect(r).toMatchObject({ idevidencia: 9, url: 'https://cdn/foto.jpg' });
+  });
+
+  it('el administrador no puede enviar evidencias en nombre del trabajador', async () => {
+    const { ds } = dsCon({});
+    await expect(
+      new TareaEvidenciaService(ds).registrar(1, 3, admin, '/tmp/f.jpg'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(subir).not.toHaveBeenCalled();
   });
 
   it('un empleado no puede agregar ni ver fotos de una tarea que no le asignaron', async () => {

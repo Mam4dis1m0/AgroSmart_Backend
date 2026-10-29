@@ -111,7 +111,7 @@ export class CreateOrdenDto {
   @IsString() @IsOptional() @MaxLength(500) notas?: string;
 }
 
-// ── Carrito y wishlist (CU-46, Premium) ───────────────────────────────────────
+// ── Carrito y wishlist (CU-46) ────────────────────────────────────────────────
 export class CarritoItemDto {
   @IsInt() idlistado: number;
   @IsNumber() @IsPositive() cantidad: number;
