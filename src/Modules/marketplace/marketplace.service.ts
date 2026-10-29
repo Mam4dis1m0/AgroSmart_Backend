@@ -775,7 +775,8 @@ export class MarketplaceService {
       `SELECT c.idlistado, c.cantidad::float8 AS cantidad, l.titulo, l.unidad,
               l.preciounitario::float8 AS preciounitario,
               (l.estado = 'PUBLICADO' AND l.volumendisponible > 0) AS disponible,
-              (c.cantidad * l.preciounitario)::float8 AS subtotal
+              (c.cantidad * l.preciounitario)::float8 AS subtotal,
+              COALESCE((SELECT json_agg(x.url ORDER BY x.orden) FROM listado_foto x WHERE x.idlistado = l.idlistado), '[]'::json) AS fotos
          FROM carrito_item c JOIN listado l ON l.idlistado = c.idlistado
         WHERE c.idusuario = $1 ORDER BY c.created_at DESC`,
       [user.idusuario],
@@ -835,7 +836,8 @@ export class MarketplaceService {
     await this.exigirCarrito(user);
     return this.ds.query(
       `SELECT w.idlistado, l.titulo, l.unidad, l.preciounitario::float8 AS preciounitario,
-              (l.estado = 'PUBLICADO' AND l.volumendisponible > 0) AS disponible
+              (l.estado = 'PUBLICADO' AND l.volumendisponible > 0) AS disponible,
+              COALESCE((SELECT json_agg(x.url ORDER BY x.orden) FROM listado_foto x WHERE x.idlistado = l.idlistado), '[]'::json) AS fotos
          FROM wishlist_item w JOIN listado l ON l.idlistado = w.idlistado
         WHERE w.idusuario = $1 ORDER BY w.created_at DESC`,
       [user.idusuario],
