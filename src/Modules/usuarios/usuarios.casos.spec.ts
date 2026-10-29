@@ -1,39 +1,19 @@
 // src/Modules/usuarios/usuarios.casos.spec.ts
 // Casos de prueba del informe · Módulo USUARIOS (CP-U01 … CP-U12)
 // registrar(): camino básico V(G)=7 (6 caminos factibles) + DTO RegistrarUsuarioDto (clases de equivalencia y límites).
-import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
 import {
   BadRequestException,
   UnauthorizedException,
   ValidationPipe,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { DataSource } from 'typeorm';
 import { UsuariosService } from './usuarios.service';
 import { RegistrarUsuarioDto } from '../../dto/Usuario.dto';
-import { Usuario } from '../../Entidades/entities/Usuario';
-import { Administrador } from '../../Entidades/entities/Administrador';
-import { Empleado } from '../../Entidades/entities/Empleado';
-import { CompradorPerfil } from '../../Entidades/entities/CompradorPerfil';
-import { CacheService } from '../../common/cache.service';
-import { OfflineQueueService } from '../../common/offline-queue.service';
-import { SyncService } from '../../common/sync.service';
-import { MailService } from '../../mail/mail.service';
-import { TokenService } from '../../auth/token.service';
-import { SesionService } from '../../auth/sesion.service';
-import { FincasService } from '../fincas/fincas.service';
 import {
-  mockCacheService,
   mockOfflineQueueService,
   mockSyncService,
-  mockMailService,
-  mockTokenService,
-  mockFincasService,
-  mockSesionService,
-  mockDataSource,
-  createMockRepository,
 } from '../../test/mocks/common-providers.mock';
+import { crearServicioUsuarios } from '../../test/mocks/usuarios-providers.mock';
 
 jest.mock('bcrypt');
 (bcrypt.hash as jest.Mock).mockResolvedValue('hash');
@@ -44,36 +24,7 @@ describe('UsuariosService.registrar · casos del informe', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     mockSyncService.isOnline.mockResolvedValue(false); // evita BD: el camino OK termina en registrarOffline()
-    const mod: TestingModule = await Test.createTestingModule({
-      providers: [
-        UsuariosService,
-        {
-          provide: getRepositoryToken(Usuario),
-          useValue: createMockRepository(),
-        },
-        {
-          provide: getRepositoryToken(Administrador),
-          useValue: createMockRepository(),
-        },
-        {
-          provide: getRepositoryToken(Empleado),
-          useValue: createMockRepository(),
-        },
-        {
-          provide: getRepositoryToken(CompradorPerfil),
-          useValue: createMockRepository(),
-        },
-        { provide: CacheService, useValue: mockCacheService },
-        { provide: OfflineQueueService, useValue: mockOfflineQueueService },
-        { provide: SyncService, useValue: mockSyncService },
-        { provide: MailService, useValue: mockMailService },
-        { provide: TokenService, useValue: mockTokenService },
-        { provide: FincasService, useValue: mockFincasService },
-        { provide: SesionService, useValue: mockSesionService },
-        { provide: DataSource, useValue: mockDataSource },
-      ],
-    }).compile();
-    service = mod.get(UsuariosService);
+    service = await crearServicioUsuarios();
   });
 
   const dto = (o: any = {}) => ({

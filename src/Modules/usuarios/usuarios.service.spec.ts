@@ -1,31 +1,18 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
 import { UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { UsuariosService } from './usuarios.service';
-import { Usuario } from '../../Entidades/entities/Usuario';
-import { Administrador } from '../../Entidades/entities/Administrador';
-import { Empleado } from '../../Entidades/entities/Empleado';
-import { CompradorPerfil } from '../../Entidades/entities/CompradorPerfil';
-import { CacheService } from '../../common/cache.service';
-import { OfflineQueueService } from '../../common/offline-queue.service';
-import { SyncService } from '../../common/sync.service';
-import { MailService } from '../../mail/mail.service';
-import { TokenService } from '../../auth/token.service';
-import { SesionService } from '../../auth/sesion.service';
-import { FincasService } from '../fincas/fincas.service';
-import { DataSource } from 'typeorm';
 import {
   mockCacheService,
-  mockOfflineQueueService,
   mockSyncService,
-  mockMailService,
   mockTokenService,
   mockFincasService,
-  mockSesionService,
-  mockDataSource,
-  createMockRepository,
 } from '../../test/mocks/common-providers.mock';
+import {
+  crearReposUsuarios,
+  crearServicioUsuarios,
+  fincaAdmin,
+  usuarioConHash as dejarUsuarioConHash,
+} from '../../test/mocks/usuarios-providers.mock';
 
 // bcrypt.compare hace un cálculo criptográfico real y lento (diseñado así a
 // propósito). En una prueba unitaria no queremos probar bcrypt — eso ya lo
@@ -34,66 +21,22 @@ import {
 jest.mock('bcrypt');
 const mockedBcrypt = bcrypt as jest.Mocked<typeof bcrypt>;
 
-const fincaAdmin = {
-  idfinca: 1,
-  nombre: 'Finca A',
-  ubicacion: null,
-  tipoproduccion: null,
-  rol: 'admin',
-  plan: 'FREEMIUM',
-};
 const fincaEmpleado = { ...fincaAdmin, rol: 'empleado' };
 const otraFinca = { ...fincaAdmin, idfinca: 2, nombre: 'Finca B' };
 
 describe('UsuariosService', () => {
   let service: UsuariosService;
-  const mockUsuarioRepository = createMockRepository();
-  const mockAdministradorRepository = createMockRepository();
-  const mockEmpleadoRepository = createMockRepository();
-  const mockCompradorRepository = createMockRepository();
+  const repos = crearReposUsuarios();
+  const mockUsuarioRepository = repos.usuario;
+  const mockAdministradorRepository = repos.administrador;
+  const mockCompradorRepository = repos.comprador;
 
-  // login() lee el usuario CON hash (la columna contrasena es select:false) vía QueryBuilder
-  const usuarioConHash = (usuario: unknown) => {
-    const qb = {
-      addSelect: jest.fn().mockReturnThis(),
-      where: jest.fn().mockReturnThis(),
-      getOne: jest.fn().mockResolvedValue(usuario),
-    };
-    mockUsuarioRepository.createQueryBuilder.mockReturnValue(qb as any);
-  };
+  // login() lee el usuario CON hash (la columna contrasena es select:false)
+  const usuarioConHash = (usuario: unknown) =>
+    dejarUsuarioConHash(mockUsuarioRepository, usuario);
 
   beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        UsuariosService,
-        {
-          provide: getRepositoryToken(Usuario),
-          useValue: mockUsuarioRepository,
-        },
-        {
-          provide: getRepositoryToken(Administrador),
-          useValue: mockAdministradorRepository,
-        },
-        {
-          provide: getRepositoryToken(Empleado),
-          useValue: mockEmpleadoRepository,
-        },
-        {
-          provide: getRepositoryToken(CompradorPerfil),
-          useValue: mockCompradorRepository,
-        },
-        { provide: CacheService, useValue: mockCacheService },
-        { provide: OfflineQueueService, useValue: mockOfflineQueueService },
-        { provide: SyncService, useValue: mockSyncService },
-        { provide: MailService, useValue: mockMailService },
-        { provide: TokenService, useValue: mockTokenService },
-        { provide: FincasService, useValue: mockFincasService },
-        { provide: SesionService, useValue: mockSesionService },
-        { provide: DataSource, useValue: mockDataSource },
-      ],
-    }).compile();
-
-    service = module.get<UsuariosService>(UsuariosService);
+    service = await crearServicioUsuarios(repos);
   });
 
   afterEach(() => {
