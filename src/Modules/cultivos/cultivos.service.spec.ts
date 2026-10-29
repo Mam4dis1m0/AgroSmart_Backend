@@ -22,7 +22,10 @@ describe('CultivosService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CultivosService,
-        { provide: getRepositoryToken(Cultivo), useValue: mockCultivoRepository },
+        {
+          provide: getRepositoryToken(Cultivo),
+          useValue: mockCultivoRepository,
+        },
         { provide: CacheService, useValue: mockCacheService },
         { provide: OfflineQueueService, useValue: mockOfflineQueueService },
         { provide: SyncService, useValue: mockSyncService },

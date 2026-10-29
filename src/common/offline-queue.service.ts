@@ -14,7 +14,11 @@ export interface QueuedOperation {
 @Injectable()
 export class OfflineQueueService {
   private readonly logger = new Logger(OfflineQueueService.name);
-  private readonly queueFile = path.join(process.cwd(), '.cache', 'pending-queue.json');
+  private readonly queueFile = path.join(
+    process.cwd(),
+    '.cache',
+    'pending-queue.json',
+  );
 
   private load(): QueuedOperation[] {
     if (!fs.existsSync(this.queueFile)) return [];
@@ -29,7 +33,11 @@ export class OfflineQueueService {
     fs.writeFileSync(this.queueFile, JSON.stringify(queue, null, 2));
   }
 
-  add(entity: string, operation: QueuedOperation['operation'], data: any): QueuedOperation {
+  add(
+    entity: string,
+    operation: QueuedOperation['operation'],
+    data: any,
+  ): QueuedOperation {
     const queue = this.load();
     const op: QueuedOperation = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -40,7 +48,9 @@ export class OfflineQueueService {
     };
     queue.push(op);
     this.save(queue);
-    this.logger.log(`📥 Encolado: ${operation} en ${entity} — pendientes: ${queue.length}`);
+    this.logger.log(
+      `📥 Encolado: ${operation} en ${entity} — pendientes: ${queue.length}`,
+    );
     return op;
   }
 
@@ -49,7 +59,7 @@ export class OfflineQueueService {
   }
 
   remove(id: string) {
-    const queue = this.load().filter(op => op.id !== id);
+    const queue = this.load().filter((op) => op.id !== id);
     this.save(queue);
   }
 

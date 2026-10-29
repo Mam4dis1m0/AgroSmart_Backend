@@ -17,7 +17,10 @@ export class CacheService {
 
   set(key: string, data: any) {
     const file = path.join(this.cacheDir, `${this.sanitize(key)}.json`);
-    fs.writeFileSync(file, JSON.stringify({ data, savedAt: new Date().toISOString() }, null, 2));
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ data, savedAt: new Date().toISOString() }, null, 2),
+    );
   }
 
   get<T>(key: string): T | null {
@@ -37,7 +40,9 @@ export class CacheService {
   }
 
   has(key: string): boolean {
-    return fs.existsSync(path.join(this.cacheDir, `${this.sanitize(key)}.json`));
+    return fs.existsSync(
+      path.join(this.cacheDir, `${this.sanitize(key)}.json`),
+    );
   }
 
   // Evita caracteres inválidos en nombres de archivo

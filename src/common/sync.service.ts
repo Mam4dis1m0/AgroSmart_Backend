@@ -80,9 +80,13 @@ export class SyncService implements OnModuleInit {
       for (const [idfinca, empleados] of porFinca) {
         this.cache.set(`empleado_f${idfinca}_all`, empleados);
       }
-      this.logger.log(`✅ Caché de empleados precargada (${filas.length} empleados en ${porFinca.size} finca(s))`);
+      this.logger.log(
+        `✅ Caché de empleados precargada (${filas.length} empleados en ${porFinca.size} finca(s))`,
+      );
     } catch (err) {
-      this.logger.warn(`⚠️ No se pudo precargar caché de empleados: ${err.message}`);
+      this.logger.warn(
+        `⚠️ No se pudo precargar caché de empleados: ${err.message}`,
+      );
     }
   }
 
@@ -115,12 +119,12 @@ export class SyncService implements OnModuleInit {
     }
 
     let timer: NodeJS.Timeout;
-    const timeout = new Promise<boolean>(resolve => {
+    const timeout = new Promise<boolean>((resolve) => {
       timer = setTimeout(() => resolve(false), this.CHECK_TIMEOUT_MS);
     });
 
     try {
-      return await Promise.race([this.probe!, timeout]);
+      return await Promise.race([this.probe, timeout]);
     } finally {
       clearTimeout(timer!);
     }
@@ -159,7 +163,14 @@ export class SyncService implements OnModuleInit {
     }
 
     // Si estábamos online, no bloqueamos la petición: se actualiza en segundo plano.
-    this.checkConnection().then(online => this.aplicarEstado(online));
+    // `void` + `.catch`: es una tarea en segundo plano; si el chequeo falla no debe tumbar el proceso.
+    void this.checkConnection()
+      .then((online) => this.aplicarEstado(online))
+      .catch((err) =>
+        this.logger.warn(
+          `No se pudo verificar la conexión: ${err?.message ?? err}`,
+        ),
+      );
     return this._online;
   }
 
@@ -172,22 +183,32 @@ export class SyncService implements OnModuleInit {
 
     const online = await this.isOnline();
     if (!online) {
-      this.logger.log(`📴 Sin internet — ${pending.length} operaciones en cola esperando`);
+      this.logger.log(
+        `📴 Sin internet — ${pending.length} operaciones en cola esperando`,
+      );
       return;
     }
 
     this.syncing = true;
     try {
-      this.logger.log(`🔄 Sincronizando ${pending.length} operación(es) pendiente(s)...`);
+      this.logger.log(
+        `🔄 Sincronizando ${pending.length} operación(es) pendiente(s)...`,
+      );
 
-      const orden = ['tarea', 'asignacion_tarea', 'detalle_tarea', '_email_pendiente', '_registro_usuario'];
+      const orden = [
+        'tarea',
+        'asignacion_tarea',
+        'detalle_tarea',
+        '_email_pendiente',
+        '_registro_usuario',
+      ];
       const sorted = [
-        ...pending.filter(op => op.entity === 'tarea'),
-        ...pending.filter(op => op.entity === 'asignacion_tarea'),
-        ...pending.filter(op => op.entity === 'detalle_tarea'),
-        ...pending.filter(op => op.entity === '_email_pendiente'),
-        ...pending.filter(op => op.entity === '_registro_usuario'),
-        ...pending.filter(op => !orden.includes(op.entity)),
+        ...pending.filter((op) => op.entity === 'tarea'),
+        ...pending.filter((op) => op.entity === 'asignacion_tarea'),
+        ...pending.filter((op) => op.entity === 'detalle_tarea'),
+        ...pending.filter((op) => op.entity === '_email_pendiente'),
+        ...pending.filter((op) => op.entity === '_registro_usuario'),
+        ...pending.filter((op) => !orden.includes(op.entity)),
       ];
 
       for (const op of sorted) {
@@ -195,9 +216,11 @@ export class SyncService implements OnModuleInit {
           await this.executeOperation(op);
           this.queue.remove(op.id);
           this.reintentos.delete(op.id);
-          this.logger.log(`  ✅ ${op.operation} en ${op.entity} — sincronizado`);
+          this.logger.log(
+            `  ✅ ${op.operation} en ${op.entity} — sincronizado`,
+          );
         } catch (err) {
-          const msg: string = (err as any)?.message ?? String(err);
+          const msg: string = err?.message ?? String(err);
 
           const irrecuperable =
             msg.startsWith('[DESCARTAR]') ||
@@ -209,7 +232,9 @@ export class SyncService implements OnModuleInit {
           if (irrecuperable) {
             this.queue.remove(op.id);
             this.reintentos.delete(op.id);
-            this.logger.error(`  ❌ [DESCARTADO] ${op.id} — error irrecuperable: ${msg}`);
+            this.logger.error(
+              `  ❌ [DESCARTADO] ${op.id} — error irrecuperable: ${msg}`,
+            );
           } else {
             const intentos = (this.reintentos.get(op.id) ?? 0) + 1;
             this.reintentos.set(op.id, intentos);
@@ -217,9 +242,13 @@ export class SyncService implements OnModuleInit {
             if (intentos >= 20) {
               this.queue.remove(op.id);
               this.reintentos.delete(op.id);
-              this.logger.error(`  ❌ [DESCARTADO por límite] ${op.id} — después de 20 intentos: ${msg}`);
+              this.logger.error(
+                `  ❌ [DESCARTADO por límite] ${op.id} — después de 20 intentos: ${msg}`,
+              );
             } else {
-              this.logger.error(`  ❌ ${op.id} falló (intento ${intentos}/20): ${msg}`);
+              this.logger.error(
+                `  ❌ ${op.id} falló (intento ${intentos}/20): ${msg}`,
+              );
             }
           }
         }
@@ -261,15 +290,21 @@ export class SyncService implements OnModuleInit {
       }
       // Si la operación trae idfinca (tabla multi-tenant) solo se borra la fila de ESA finca
       if (Object.prototype.hasOwnProperty.call(data, 'idfinca')) {
-        const filtroFinca = data.idfinca === null ? 'idfinca IS NULL' : 'idfinca = $2';
-        const params = data.idfinca === null ? [Number(pkValue)] : [Number(pkValue), Number(data.idfinca)];
-        await this.dataSource.query(`DELETE FROM "${entity}" WHERE ${pk} = $1 AND ${filtroFinca}`, params);
+        const filtroFinca =
+          data.idfinca === null ? 'idfinca IS NULL' : 'idfinca = $2';
+        const params =
+          data.idfinca === null
+            ? [Number(pkValue)]
+            : [Number(pkValue), Number(data.idfinca)];
+        await this.dataSource.query(
+          `DELETE FROM "${entity}" WHERE ${pk} = $1 AND ${filtroFinca}`,
+          params,
+        );
         return;
       }
-      await this.dataSource.query(
-        `DELETE FROM "${entity}" WHERE ${pk} = $1`,
-        [Number(pkValue)],
-      );
+      await this.dataSource.query(`DELETE FROM "${entity}" WHERE ${pk} = $1`, [
+        Number(pkValue),
+      ]);
       return;
     }
 
@@ -279,7 +314,7 @@ export class SyncService implements OnModuleInit {
         Object.entries(data).filter(([k, v]) => {
           if (k.startsWith('_')) return false;
           if (k === 'idtarea') return false; // excluye id temporal negativo
-          if (typeof v === 'string' && (v as string).startsWith('offline_')) return false;
+          if (typeof v === 'string' && v.startsWith('offline_')) return false;
           return true;
         }),
       );
@@ -304,7 +339,7 @@ export class SyncService implements OnModuleInit {
         for (const pendiente of queue) {
           if (
             (pendiente.entity === 'asignacion_tarea' ||
-             pendiente.entity === 'detalle_tarea') &&
+              pendiente.entity === 'detalle_tarea') &&
             pendiente.data.idtarea === idTemporal
           ) {
             pendiente.data.idtarea = idReal;
@@ -315,7 +350,9 @@ export class SyncService implements OnModuleInit {
           const fs = require('fs');
           const queueFile = (this.queue as any).queueFile;
           fs.writeFileSync(queueFile, JSON.stringify(queue, null, 2));
-          this.logger.log(`  🔄 ${cambios} operación(es) actualizadas: ${idTemporal} → ${idReal}`);
+          this.logger.log(
+            `  🔄 ${cambios} operación(es) actualizadas: ${idTemporal} → ${idReal}`,
+          );
         }
       }
       return;
@@ -324,17 +361,20 @@ export class SyncService implements OnModuleInit {
     // ── CREATE especial: asignacion_tarea — verifica FK ────────────────────
     if (entity === 'asignacion_tarea' && operation === 'CREATE') {
       const idtarea = data.idtarea;
-      if (idtarea < 0) throw new Error(`Tarea padre #${idtarea} aún no sincronizada`);
+      if (idtarea < 0)
+        throw new Error(`Tarea padre #${idtarea} aún no sincronizada`);
 
       const existe = await this.dataSource.query(
-        `SELECT idtarea FROM tarea WHERE idtarea = $1`, [idtarea],
+        `SELECT idtarea FROM tarea WHERE idtarea = $1`,
+        [idtarea],
       );
-      if (!existe.length) throw new Error(`Tarea #${idtarea} no existe en Supabase todavía`);
+      if (!existe.length)
+        throw new Error(`Tarea #${idtarea} no existe en Supabase todavía`);
 
       const cleanData = Object.fromEntries(
         Object.entries(data).filter(([k, v]) => {
           if (k.startsWith('_')) return false;
-          if (typeof v === 'string' && (v as string).startsWith('offline_')) return false;
+          if (typeof v === 'string' && v.startsWith('offline_')) return false;
           return true;
         }),
       );
@@ -352,17 +392,20 @@ export class SyncService implements OnModuleInit {
     // ── CREATE especial: detalle_tarea — verifica FK ────────────────────────
     if (entity === 'detalle_tarea' && operation === 'CREATE') {
       const idtarea = data.idtarea;
-      if (idtarea < 0) throw new Error(`Tarea padre #${idtarea} aún no sincronizada`);
+      if (idtarea < 0)
+        throw new Error(`Tarea padre #${idtarea} aún no sincronizada`);
 
       const existe = await this.dataSource.query(
-        `SELECT idtarea FROM tarea WHERE idtarea = $1`, [idtarea],
+        `SELECT idtarea FROM tarea WHERE idtarea = $1`,
+        [idtarea],
       );
-      if (!existe.length) throw new Error(`Tarea #${idtarea} no existe en Supabase todavía`);
+      if (!existe.length)
+        throw new Error(`Tarea #${idtarea} no existe en Supabase todavía`);
 
       const cleanData = Object.fromEntries(
         Object.entries(data).filter(([k, v]) => {
           if (k.startsWith('_')) return false;
-          if (typeof v === 'string' && (v as string).startsWith('offline_')) return false;
+          if (typeof v === 'string' && v.startsWith('offline_')) return false;
           return true;
         }),
       );
@@ -381,7 +424,7 @@ export class SyncService implements OnModuleInit {
     const cleanData = Object.fromEntries(
       Object.entries(data).filter(([k, v]) => {
         if (k.startsWith('_')) return false;
-        if (typeof v === 'string' && (v as string).startsWith('offline_')) return false;
+        if (typeof v === 'string' && v.startsWith('offline_')) return false;
         return true;
       }),
     );
@@ -403,7 +446,11 @@ export class SyncService implements OnModuleInit {
     // Tablas multi-tenant: UPDATE acotado a la finca. Nunca un upsert, que podría pisar
     // una fila de OTRA finca si el id coincide (RNF-16).
     if (Object.prototype.hasOwnProperty.call(cleanData, 'idfinca')) {
-      const { [pk]: pkValue, idfinca, ...campos } = cleanData as Record<string, unknown>;
+      const {
+        [pk]: pkValue,
+        idfinca,
+        ...campos
+      } = cleanData as Record<string, unknown>;
       const nombres = Object.keys(campos);
       if (nombres.length === 0) return;
 
@@ -419,7 +466,9 @@ export class SyncService implements OnModuleInit {
         params,
       );
       if (filasActualizadas(resultado) === 0) {
-        this.logger.warn(`  ⚠️ UPDATE descartado: ${entity} #${String(pkValue)} no existe en la finca ${String(idfinca)}`);
+        this.logger.warn(
+          `  ⚠️ UPDATE descartado: ${entity} #${String(pkValue)} no existe en la finca ${String(idfinca)}`,
+        );
       }
       return;
     }
@@ -443,12 +492,26 @@ export class SyncService implements OnModuleInit {
         data.emailDestino,
         data.nombreTarea ?? 'Sin nombre',
       );
-      this.logger.log(`  📧 Email tareaAsignada enviado a ${data.emailDestino}`);
+      this.logger.log(
+        `  📧 Email tareaAsignada enviado a ${data.emailDestino}`,
+      );
     }
   }
 
   private async syncRegistroUsuario(data: any) {
-    const { userData, role, montoporhora, montoporjornal, montomensual, tipopago, valorpago, idfinca, ubicacion, latitud, longitud } = data;
+    const {
+      userData,
+      role,
+      montoporhora,
+      montoporjornal,
+      montomensual,
+      tipopago,
+      valorpago,
+      idfinca,
+      ubicacion,
+      latitud,
+      longitud,
+    } = data;
 
     const cleanUser = Object.fromEntries(
       Object.entries(userData as Record<string, unknown>).filter(([k, v]) => {
@@ -472,7 +535,9 @@ export class SyncService implements OnModuleInit {
     );
     const idusuario = result[0]?.idusuario;
     if (!idusuario) {
-      throw new Error('[DESCARTAR] El correo ya está registrado: se descarta el registro offline');
+      throw new Error(
+        '[DESCARTAR] El correo ya está registrado: se descarta el registro offline',
+      );
     }
 
     if (role === 'admin') {
@@ -494,7 +559,13 @@ export class SyncService implements OnModuleInit {
         `INSERT INTO empleado (idusuario, montoporhora, montoporjornal, tipopago, valorpago)
          VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (idusuario) DO UPDATE SET montoporhora = $2, montoporjornal = $3, tipopago = $4, valorpago = $5`,
-        [idusuario, montoporhora ?? 0, montoporjornal ?? 0, tipopago ?? 'dia', valorpago ?? 0],
+        [
+          idusuario,
+          montoporhora ?? 0,
+          montoporjornal ?? 0,
+          tipopago ?? 'dia',
+          valorpago ?? 0,
+        ],
       );
       // El empleado nace dentro de la finca del administrador que lo registró
       if (idfinca) {
@@ -506,14 +577,20 @@ export class SyncService implements OnModuleInit {
       }
     }
 
-    this.logger.log(`  👤 Usuario sincronizado: idusuario=${idusuario} rol=${role}`);
+    this.logger.log(
+      `  👤 Usuario sincronizado: idusuario=${idusuario} rol=${role}`,
+    );
   }
 }
 
 /** UPDATE ... RETURNING devuelve [filas, n] según la versión de TypeORM; normaliza a cantidad. */
 function filasActualizadas(resultado: any): number {
   if (!Array.isArray(resultado)) return 0;
-  if (resultado.length === 2 && Array.isArray(resultado[0]) && typeof resultado[1] === 'number') {
+  if (
+    resultado.length === 2 &&
+    Array.isArray(resultado[0]) &&
+    typeof resultado[1] === 'number'
+  ) {
     return resultado[1];
   }
   return resultado.length;

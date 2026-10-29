@@ -1,5 +1,10 @@
 // src/Modules/cultivos/cultivos.service.ts
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Cultivo } from '../../Entidades/entities/Cultivo';
@@ -25,7 +30,8 @@ export class CultivosService extends BaseOfflineService<Cultivo> {
 
   findAll() {
     return this.findAllOffline(() =>
-      this.repo.createQueryBuilder('cultivo')
+      this.repo
+        .createQueryBuilder('cultivo')
         .leftJoinAndSelect('cultivo.idlote', 'lote')
         .leftJoinAndSelect('cultivo.idadminsupervisor', 'admin')
         .where('cultivo.idfinca = :f', { f: this.idfinca })
@@ -35,14 +41,19 @@ export class CultivosService extends BaseOfflineService<Cultivo> {
 
   findOne(id: number) {
     return this.findOneOffline(id, () =>
-      this.repo.findOne({ where: this.where({ idcultivo: id }), relations: ['idlote', 'idadminsupervisor'] }),
+      this.repo.findOne({
+        where: this.where({ idcultivo: id }),
+        relations: ['idlote', 'idadminsupervisor'],
+      }),
     );
   }
 
   /** RNF-05: la cosecha estimada debe ser posterior a la siembra. */
   private validarFechas(siembra?: string | null, cosecha?: string | null) {
     if (siembra && cosecha && new Date(cosecha) < new Date(siembra)) {
-      throw new BadRequestException('La fecha de cosecha estimada no puede ser anterior a la de siembra');
+      throw new BadRequestException(
+        'La fecha de cosecha estimada no puede ser anterior a la de siembra',
+      );
     }
   }
 
@@ -67,11 +78,19 @@ export class CultivosService extends BaseOfflineService<Cultivo> {
       `SELECT 1 FROM finca_usuario WHERE idfinca = $1 AND idusuario = $2 AND rol = 'admin' AND activo = true`,
       [this.idfinca, idadmin],
     );
-    if (!r.length) throw new NotFoundException('El supervisor no es administrador de esta finca');
+    if (!r.length)
+      throw new NotFoundException(
+        'El supervisor no es administrador de esta finca',
+      );
   }
 
   private async validarLote(idlote?: number) {
-    if (idlote) await this.assertEnFinca(this.repo.manager.getRepository(Lote), { idlote }, 'El lote');
+    if (idlote)
+      await this.assertEnFinca(
+        this.repo.manager.getRepository(Lote),
+        { idlote },
+        'El lote',
+      );
   }
 
   create(dto: CreateCultivoDto) {
@@ -82,8 +101,10 @@ export class CultivosService extends BaseOfflineService<Cultivo> {
       await this.validarSupervisor(dto.idadminsupervisor);
       const entity = this.repo.create({
         ...this.withFinca(dto),
-        idlote:            dto.idlote            ? { idlote: dto.idlote }               as any : undefined,
-        idadminsupervisor: dto.idadminsupervisor ? { idusuario: dto.idadminsupervisor } as any : undefined,
+        idlote: dto.idlote ? ({ idlote: dto.idlote } as any) : undefined,
+        idadminsupervisor: dto.idadminsupervisor
+          ? ({ idusuario: dto.idadminsupervisor } as any)
+          : undefined,
       });
       return this.repo.save(entity);
     });
@@ -93,13 +114,16 @@ export class CultivosService extends BaseOfflineService<Cultivo> {
     this.validarFechas(dto.fechasiembra, dto.fechacosechaestimada);
     return this.updateOffline(id, dto, async () => {
       const entity = await this.repo.findOneBy(this.where({ idcultivo: id }));
-      if (!entity) throw new NotFoundException(`cultivo #${id} no existe en esta finca`);
+      if (!entity)
+        throw new NotFoundException(`cultivo #${id} no existe en esta finca`);
       await this.validarLote(dto.idlote);
       await this.validarSupervisor(dto.idadminsupervisor);
       Object.assign(entity, {
         ...this.sinFinca(dto),
-        idlote:            dto.idlote            ? { idlote: dto.idlote }               as any : entity.idlote,
-        idadminsupervisor: dto.idadminsupervisor ? { idusuario: dto.idadminsupervisor } as any : entity.idadminsupervisor,
+        idlote: dto.idlote ? ({ idlote: dto.idlote } as any) : entity.idlote,
+        idadminsupervisor: dto.idadminsupervisor
+          ? ({ idusuario: dto.idadminsupervisor } as any)
+          : entity.idadminsupervisor,
       });
       this.validarFechas(entity.fechasiembra, entity.fechacosechaestimada);
       return this.repo.save(entity);

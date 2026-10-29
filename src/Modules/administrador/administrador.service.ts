@@ -1,5 +1,9 @@
 // src/Modules/administrador/administrador.service.ts
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Administrador } from '../../Entidades/entities/Administrador';
@@ -42,7 +46,9 @@ export class AdministradorService extends BaseOfflineService<Administrador> {
   }
 
   findOne(id: number) {
-    return this.findOneOffline(id, () => this.deLaFinca().andWhere('a.idusuario = :id', { id }).getOne());
+    return this.findOneOffline(id, () =>
+      this.deLaFinca().andWhere('a.idusuario = :id', { id }).getOne(),
+    );
   }
 
   /**
@@ -50,15 +56,30 @@ export class AdministradorService extends BaseOfflineService<Administrador> {
    * usuarios sin finca o que ya pertenecen a esta (no se "roban" usuarios de otras fincas).
    */
   async create(data: Partial<Administrador>) {
-    if (!data.idusuario) throw new BadRequestException('idusuario es obligatorio');
-    if (data.montomensual !== undefined && data.montomensual !== null && !(Number(data.montomensual) >= 0)) {
-      throw new BadRequestException('montomensual debe ser mayor o igual a cero');
+    if (!data.idusuario)
+      throw new BadRequestException('idusuario es obligatorio');
+    if (
+      data.montomensual !== undefined &&
+      data.montomensual !== null &&
+      !(Number(data.montomensual) >= 0)
+    ) {
+      throw new BadRequestException(
+        'montomensual debe ser mayor o igual a cero',
+      );
     }
     return this.createOffline(data, async () => {
-      await this.fincas.agregarMiembro(this.idfinca, data.idusuario as number, 'admin');
-      const existente = await this.repo.findOneBy({ idusuario: data.idusuario });
+      await this.fincas.agregarMiembro(
+        this.idfinca,
+        data.idusuario as number,
+        'admin',
+      );
+      const existente = await this.repo.findOneBy({
+        idusuario: data.idusuario,
+      });
       if (existente) {
-        await this.repo.update(data.idusuario as number, { montomensual: data.montomensual ?? existente.montomensual });
+        await this.repo.update(data.idusuario as number, {
+          montomensual: data.montomensual ?? existente.montomensual,
+        });
         return this.repo.findOneByOrFail({ idusuario: data.idusuario });
       }
       return this.repo.save(this.repo.create(data));
@@ -66,20 +87,34 @@ export class AdministradorService extends BaseOfflineService<Administrador> {
   }
 
   update(id: number, data: Partial<Administrador>) {
-    if (data.montomensual !== undefined && data.montomensual !== null && !(Number(data.montomensual) >= 0)) {
-      throw new BadRequestException('montomensual debe ser mayor o igual a cero');
+    if (
+      data.montomensual !== undefined &&
+      data.montomensual !== null &&
+      !(Number(data.montomensual) >= 0)
+    ) {
+      throw new BadRequestException(
+        'montomensual debe ser mayor o igual a cero',
+      );
     }
-    return this.updateOffline(id, { montomensual: data.montomensual }, async () => {
-      if (!(await this.fincas.esMiembro(this.idfinca, id, 'admin'))) {
-        throw new NotFoundException(`administrador #${id} no pertenece a esta finca`);
-      }
-      await this.repo.update(id, { montomensual: data.montomensual });
-      return this.repo.findOneBy({ idusuario: id });
-    });
+    return this.updateOffline(
+      id,
+      { montomensual: data.montomensual },
+      async () => {
+        if (!(await this.fincas.esMiembro(this.idfinca, id, 'admin'))) {
+          throw new NotFoundException(
+            `administrador #${id} no pertenece a esta finca`,
+          );
+        }
+        await this.repo.update(id, { montomensual: data.montomensual });
+        return this.repo.findOneBy({ idusuario: id });
+      },
+    );
   }
 
   /** Quita al administrador de ESTA finca (no borra su perfil: puede administrar otras). */
   remove(id: number) {
-    return this.removeOffline(id, () => this.fincas.quitarMiembro(this.idfinca, id));
+    return this.removeOffline(id, () =>
+      this.fincas.quitarMiembro(this.idfinca, id),
+    );
   }
 }

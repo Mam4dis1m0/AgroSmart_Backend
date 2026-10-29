@@ -29,7 +29,10 @@ export class PalmasService extends BaseOfflineService<Palma> {
 
   findOne(id: number) {
     return this.findOneOffline(id, () =>
-      this.repo.findOne({ where: this.where({ idpalma: id }), relations: ['idlote'] }),
+      this.repo.findOne({
+        where: this.where({ idpalma: id }),
+        relations: ['idlote'],
+      }),
     );
   }
 
@@ -37,17 +40,27 @@ export class PalmasService extends BaseOfflineService<Palma> {
     const online = await this.sync.isOnline();
     if (!online) {
       const all = this.cache.get<Palma[]>(this.cacheKeyAll()) ?? [];
-      return all.filter((p: any) => p.idlote?.idlote === idlote || p.idlote === idlote);
+      return all.filter(
+        (p: any) => p.idlote?.idlote === idlote || p.idlote === idlote,
+      );
     }
-    return this.repo.find({ where: this.where({ idlote }), relations: ['idlote'] });
+    return this.repo.find({
+      where: this.where({ idlote }),
+      relations: ['idlote'],
+    });
   }
 
   create(dto: CreatePalmaDto) {
     return this.createOffline(dto, async () => {
-      if (dto.idlote) await this.assertEnFinca(this.repo.manager.getRepository(Lote), { idlote: dto.idlote }, 'El lote');
+      if (dto.idlote)
+        await this.assertEnFinca(
+          this.repo.manager.getRepository(Lote),
+          { idlote: dto.idlote },
+          'El lote',
+        );
       const entity = this.repo.create({
         ...this.withFinca(dto),
-        idlote: dto.idlote ? { idlote: dto.idlote } as any : undefined,
+        idlote: dto.idlote ? ({ idlote: dto.idlote } as any) : undefined,
       });
       return this.repo.save(entity);
     });
@@ -56,11 +69,17 @@ export class PalmasService extends BaseOfflineService<Palma> {
   update(id: number, dto: UpdatePalmaDto) {
     return this.updateOffline(id, dto, async () => {
       const entity = await this.repo.findOneBy(this.where({ idpalma: id }));
-      if (!entity) throw new NotFoundException(`palma #${id} no existe en esta finca`);
-      if (dto.idlote) await this.assertEnFinca(this.repo.manager.getRepository(Lote), { idlote: dto.idlote }, 'El lote');
+      if (!entity)
+        throw new NotFoundException(`palma #${id} no existe en esta finca`);
+      if (dto.idlote)
+        await this.assertEnFinca(
+          this.repo.manager.getRepository(Lote),
+          { idlote: dto.idlote },
+          'El lote',
+        );
       Object.assign(entity, {
         ...this.sinFinca(dto),
-        idlote: dto.idlote ? { idlote: dto.idlote } as any : entity.idlote,
+        idlote: dto.idlote ? ({ idlote: dto.idlote } as any) : entity.idlote,
       });
       return this.repo.save(entity);
     });

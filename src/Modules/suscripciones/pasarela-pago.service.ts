@@ -10,7 +10,11 @@
 //
 // Para integrar un proveedor, reemplaza el cuerpo de cobrar() manteniendo la firma.
 
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 
 export interface ResultadoCobro {
   aprobado: boolean;
@@ -36,7 +40,13 @@ export class PasarelaPagoService {
       );
     }
 
-    this.logger.warn(`💳 [SIMULADO] Cobro aprobado: ${monto} ${moneda} — ${concepto}`);
-    return { aprobado: true, proveedor: 'SIMULADO', referencia: `SIM-${Date.now()}` };
+    this.logger.warn(
+      `💳 [SIMULADO] Cobro aprobado: ${monto} ${moneda} — ${concepto}`,
+    );
+    return {
+      aprobado: true,
+      proveedor: 'SIMULADO',
+      referencia: `SIM-${Date.now()}`,
+    };
   }
 }

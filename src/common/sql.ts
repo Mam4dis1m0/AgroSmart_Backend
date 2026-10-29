@@ -8,7 +8,11 @@
  */
 export function filas<T = any>(resultado: any): T[] {
   if (!Array.isArray(resultado)) return [];
-  if (resultado.length === 2 && Array.isArray(resultado[0]) && typeof resultado[1] === 'number') {
+  if (
+    resultado.length === 2 &&
+    Array.isArray(resultado[0]) &&
+    typeof resultado[1] === 'number'
+  ) {
     return resultado[0] as T[];
   }
   return resultado as T[];

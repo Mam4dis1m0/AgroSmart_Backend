@@ -20,7 +20,10 @@ describe('AuditoriaService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuditoriaService,
-        { provide: getRepositoryToken(Auditoria), useValue: mockAuditoriaRepository },
+        {
+          provide: getRepositoryToken(Auditoria),
+          useValue: mockAuditoriaRepository,
+        },
         { provide: CacheService, useValue: mockCacheService },
         { provide: OfflineQueueService, useValue: mockOfflineQueueService },
         { provide: SyncService, useValue: mockSyncService },

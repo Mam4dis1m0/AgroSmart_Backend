@@ -35,8 +35,13 @@ interface CultivoFechas {
  * «inicio» = cuando empieza el trabajo con el cultivo: la siembra si todavía no ocurre; si el cultivo
  * ya está establecido (sembrado antes de hoy), las labores de mantenimiento cuentan desde hoy.
  */
-export function fechaBase(base: string, cultivo: CultivoFechas, hoyISO: string = hoy()): string | null {
-  if (base === 'cosecha_estimada') return cultivo.fechacosechaestimada?.slice(0, 10) ?? null;
+export function fechaBase(
+  base: string,
+  cultivo: CultivoFechas,
+  hoyISO: string = hoy(),
+): string | null {
+  if (base === 'cosecha_estimada')
+    return cultivo.fechacosechaestimada?.slice(0, 10) ?? null;
   const siembra = cultivo.fechasiembra?.slice(0, 10) ?? null;
   if (base === 'inicio') return siembra && siembra >= hoyISO ? siembra : hoyISO;
   return siembra;
@@ -66,19 +71,35 @@ export interface PrimeraFecha {
  * repetitivas no se quedan en el pasado: se programa la próxima repetición a partir de hoy
  * (fecha original + k × frecuencia), mientras no se haya cumplido el ciclo de la labor.
  */
-export function primeraFecha(p: PlantillaFechas, cultivo: CultivoFechas, hoyISO: string = hoy()): PrimeraFecha {
+export function primeraFecha(
+  p: PlantillaFechas,
+  cultivo: CultivoFechas,
+  hoyISO: string = hoy(),
+): PrimeraFecha {
   const base = fechaBase(p.base, cultivo, hoyISO);
-  if (!base) return { fecha: null, pasada: false, ajustada: false, terminada: false };
+  if (!base)
+    return { fecha: null, pasada: false, ajustada: false, terminada: false };
 
   const original = sumarDias(base, p.diasoffset);
-  if (original >= hoyISO) return { fecha: original, pasada: false, ajustada: false, terminada: false };
+  if (original >= hoyISO)
+    return {
+      fecha: original,
+      pasada: false,
+      ajustada: false,
+      terminada: false,
+    };
 
   const frecuencia = p.frecuenciadias ?? 0;
-  if (!p.esrecurrente || frecuencia <= 0) return { fecha: original, pasada: true, ajustada: false, terminada: false };
+  if (!p.esrecurrente || frecuencia <= 0)
+    return { fecha: original, pasada: true, ajustada: false, terminada: false };
 
   const saltos = Math.ceil(diasEntre(original, hoyISO) / frecuencia);
   const proxima = sumarDias(original, saltos * frecuencia);
-  const limite = p.diasfin !== null ? sumarDias(base, p.diasfin) : cultivo.fechacosechaestimada?.slice(0, 10) ?? null;
-  if (limite && proxima > limite) return { fecha: null, pasada: true, ajustada: false, terminada: true };
+  const limite =
+    p.diasfin !== null
+      ? sumarDias(base, p.diasfin)
+      : (cultivo.fechacosechaestimada?.slice(0, 10) ?? null);
+  if (limite && proxima > limite)
+    return { fecha: null, pasada: true, ajustada: false, terminada: true };
   return { fecha: proxima, pasada: false, ajustada: true, terminada: false };
 }

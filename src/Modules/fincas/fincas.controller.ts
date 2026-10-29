@@ -13,7 +13,11 @@ import {
 } from '@nestjs/common';
 import { CurrentUser, Roles, SinFinca } from '../../auth/auth.decorators';
 import { AuthUser, TenantContext } from '../../auth/tenant-context';
-import { CambiarEstadoMiembroDto, CreateFincaDto, UpdateFincaDto } from '../../dto/finca.dto';
+import {
+  CambiarEstadoMiembroDto,
+  CreateFincaDto,
+  UpdateFincaDto,
+} from '../../dto/finca.dto';
 import { FincasService } from './fincas.service';
 
 @Controller('api/v1/fincas')
@@ -49,7 +53,10 @@ export class FincasController {
   @Post(':idfinca/seleccionar')
   @Roles('admin', 'empleado')
   @SinFinca()
-  seleccionar(@Param('idfinca', ParseIntPipe) idfinca: number, @CurrentUser() user: AuthUser) {
+  seleccionar(
+    @Param('idfinca', ParseIntPipe) idfinca: number,
+    @CurrentUser() user: AuthUser,
+  ) {
     return this.fincasService.seleccionar(idfinca, user);
   }
 
@@ -77,14 +84,23 @@ export class FincasController {
     @Param('idusuario', ParseIntPipe) idusuario: number,
     @Body() dto: CambiarEstadoMiembroDto,
   ) {
-    await this.fincasService.cambiarEstadoMiembro(TenantContext.requireFinca(), idusuario, dto.activo);
-    return { message: dto.activo ? 'Miembro reactivado' : 'Miembro desactivado' };
+    await this.fincasService.cambiarEstadoMiembro(
+      TenantContext.requireFinca(),
+      idusuario,
+      dto.activo,
+    );
+    return {
+      message: dto.activo ? 'Miembro reactivado' : 'Miembro desactivado',
+    };
   }
 
   @Delete('activa/miembros/:idusuario')
   @Roles('admin')
   async quitar(@Param('idusuario', ParseIntPipe) idusuario: number) {
-    await this.fincasService.quitarMiembro(TenantContext.requireFinca(), idusuario);
+    await this.fincasService.quitarMiembro(
+      TenantContext.requireFinca(),
+      idusuario,
+    );
     return { message: 'Miembro removido de la finca' };
   }
 }

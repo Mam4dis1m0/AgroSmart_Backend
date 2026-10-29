@@ -33,7 +33,9 @@ async function bootstrap() {
   // no puede aislar los datos por finca y rechaza la petición.
   app.use(tenantMiddleware);
 
-  const extraOrigins = process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [];
+  const extraOrigins = process.env.FRONTEND_URL
+    ? [process.env.FRONTEND_URL]
+    : [];
 
   app.enableCors({
     origin: (origin, callback) => {
@@ -59,15 +61,14 @@ async function bootstrap() {
   });
 
   const config = new DocumentBuilder()
-  .setTitle('AgroSmart API')
-  .setDescription('API de gestión agrícola')
-  .setVersion('1.0')
-  .addBearerAuth()
-  .build();
-const document = SwaggerModule.createDocument(app, config);
-SwaggerModule.setup('api', app, document);
-  
-  
+    .setTitle('AgroSmart API')
+    .setDescription('API de gestión agrícola')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api', app, document);
+
   const port = process.env.PORT || 3000;
   await app.listen(port);
   logger.log(`🚀 Servidor corriendo en el puerto ${port}`);

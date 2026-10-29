@@ -13,9 +13,11 @@ import { MailService } from '../../mail/mail.service';
 import {
   mockCacheService,
   mockOfflineQueueService,
-  mockSyncService, mockMailService,
+  mockSyncService,
+  mockMailService,
   createMockRepository,
-  conSesion, sesionAdmin,
+  conSesion,
+  sesionAdmin,
 } from '../../test/mocks/common-providers.mock';
 
 describe('TareasService', () => {
@@ -31,10 +33,19 @@ describe('TareasService', () => {
       providers: [
         TareasService,
         { provide: getRepositoryToken(Tarea), useValue: mockTareaRepository },
-        { provide: getRepositoryToken(Empleado), useValue: mockEmpleadoRepository },
-        { provide: getRepositoryToken(AsignacionTarea), useValue: mockAsignacionTareaRepository },
+        {
+          provide: getRepositoryToken(Empleado),
+          useValue: mockEmpleadoRepository,
+        },
+        {
+          provide: getRepositoryToken(AsignacionTarea),
+          useValue: mockAsignacionTareaRepository,
+        },
         { provide: getRepositoryToken(Insumo), useValue: mockInsumoRepository },
-        { provide: getRepositoryToken(DetalleTarea), useValue: mockDetalleTareaRepository },
+        {
+          provide: getRepositoryToken(DetalleTarea),
+          useValue: mockDetalleTareaRepository,
+        },
         { provide: CacheService, useValue: mockCacheService },
         { provide: OfflineQueueService, useValue: mockOfflineQueueService },
         { provide: SyncService, useValue: mockSyncService },
@@ -70,8 +81,12 @@ describe('TareasService', () => {
     };
 
     it('debe marcar la asignación como Completado y guardarla', async () => {
-      mockAsignacionTareaRepository.findOne.mockResolvedValue({ ...asignacionBase });
-      mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
+      mockAsignacionTareaRepository.findOne.mockResolvedValue({
+        ...asignacionBase,
+      });
+      mockAsignacionTareaRepository.save.mockImplementation((a) =>
+        Promise.resolve(a),
+      );
 
       const result = await conSesion(sesionAdmin, () => service.completar(10));
 
@@ -82,18 +97,29 @@ describe('TareasService', () => {
     });
 
     it('debe actualizar también el estado de la tarea principal asociada', async () => {
-      mockAsignacionTareaRepository.findOne.mockResolvedValue({ ...asignacionBase });
-      mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
+      mockAsignacionTareaRepository.findOne.mockResolvedValue({
+        ...asignacionBase,
+      });
+      mockAsignacionTareaRepository.save.mockImplementation((a) =>
+        Promise.resolve(a),
+      );
 
       await conSesion(sesionAdmin, () => service.completar(10));
 
       // Se actualiza SOLO la tarea de la finca activa (idfinca = 1)
-      expect(mockTareaRepository.update).toHaveBeenCalledWith({ idtarea: 7, idfinca: 1 }, { estado: 'Completado' });
+      expect(mockTareaRepository.update).toHaveBeenCalledWith(
+        { idtarea: 7, idfinca: 1 },
+        { estado: 'Completado' },
+      );
     });
 
     it('debe notificar por correo al administrador que asignó la tarea', async () => {
-      mockAsignacionTareaRepository.findOne.mockResolvedValue({ ...asignacionBase });
-      mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
+      mockAsignacionTareaRepository.findOne.mockResolvedValue({
+        ...asignacionBase,
+      });
+      mockAsignacionTareaRepository.save.mockImplementation((a) =>
+        Promise.resolve(a),
+      );
 
       await conSesion(sesionAdmin, () => service.completar(10));
 
@@ -107,7 +133,9 @@ describe('TareasService', () => {
     it('NO debe intentar notificar si la asignación no tiene admin asignador con email', async () => {
       const sinAdmin = { ...asignacionBase, idadminasignador: null };
       mockAsignacionTareaRepository.findOne.mockResolvedValue(sinAdmin);
-      mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
+      mockAsignacionTareaRepository.save.mockImplementation((a) =>
+        Promise.resolve(a),
+      );
 
       await conSesion(sesionAdmin, () => service.completar(10));
 
@@ -115,8 +143,12 @@ describe('TareasService', () => {
     });
 
     it('debe invalidar el caché de la tarea y el listado general tras completar', async () => {
-      mockAsignacionTareaRepository.findOne.mockResolvedValue({ ...asignacionBase });
-      mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
+      mockAsignacionTareaRepository.findOne.mockResolvedValue({
+        ...asignacionBase,
+      });
+      mockAsignacionTareaRepository.save.mockImplementation((a) =>
+        Promise.resolve(a),
+      );
 
       await conSesion(sesionAdmin, () => service.completar(10));
 
@@ -126,22 +158,32 @@ describe('TareasService', () => {
     });
 
     it('NO completa la tarea mientras otra asignación siga abierta (cuadrilla)', async () => {
-      mockAsignacionTareaRepository.findOne.mockResolvedValue({ ...asignacionBase });
-      mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
+      mockAsignacionTareaRepository.findOne.mockResolvedValue({
+        ...asignacionBase,
+      });
+      mockAsignacionTareaRepository.save.mockImplementation((a) =>
+        Promise.resolve(a),
+      );
       mockAsignacionTareaRepository.count.mockResolvedValue(1);
 
       await conSesion(sesionAdmin, () => service.completar(10));
 
       expect(mockTareaRepository.update).not.toHaveBeenCalledWith(
-        expect.anything(), expect.objectContaining({ estado: 'Completado' }),
+        expect.anything(),
+        expect.objectContaining({ estado: 'Completado' }),
       );
       mockAsignacionTareaRepository.count.mockReset();
     });
 
     it('calcula las horas trabajadas a partir del cronómetro si no se digitaron', async () => {
       const inicio = new Date(Date.now() - 2.5 * 3_600_000);
-      mockAsignacionTareaRepository.findOne.mockResolvedValue({ ...asignacionBase, fechainicio: inicio });
-      mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
+      mockAsignacionTareaRepository.findOne.mockResolvedValue({
+        ...asignacionBase,
+        fechainicio: inicio,
+      });
+      mockAsignacionTareaRepository.save.mockImplementation((a) =>
+        Promise.resolve(a),
+      );
 
       const result = await conSesion(sesionAdmin, () => service.completar(10));
 
@@ -151,8 +193,14 @@ describe('TareasService', () => {
 
     it('respeta las horas ya digitadas a mano', async () => {
       const inicio = new Date(Date.now() - 5 * 3_600_000);
-      mockAsignacionTareaRepository.findOne.mockResolvedValue({ ...asignacionBase, fechainicio: inicio, horastrabajadas: 3 });
-      mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
+      mockAsignacionTareaRepository.findOne.mockResolvedValue({
+        ...asignacionBase,
+        fechainicio: inicio,
+        horastrabajadas: 3,
+      });
+      mockAsignacionTareaRepository.save.mockImplementation((a) =>
+        Promise.resolve(a),
+      );
 
       const result = await conSesion(sesionAdmin, () => service.completar(10));
 
@@ -162,10 +210,14 @@ describe('TareasService', () => {
 
   describe('completar() de una tarea de cosecha', () => {
     const asig = () => ({
-      idasigtarea: 10, estado: 'En progreso',
+      idasigtarea: 10,
+      estado: 'En progreso',
       idtarea: { idtarea: 7, tipoactividad: 'Cosecha' },
       idempleado: { idusuario: 5, idusuario2: { primernombre: 'Ana' } },
-      idadminasignador: { idusuario: 1, idusuario2: { email: 'admin@agrosmart.com' } },
+      idadminasignador: {
+        idusuario: 1,
+        idusuario2: { email: 'admin@agrosmart.com' },
+      },
     });
     const query = jest.fn();
 
@@ -179,11 +231,29 @@ describe('TareasService', () => {
     it('registra lo recolectado en Cosechas, ligado a la tarea y a quien lo recogió', async () => {
       mockAsignacionTareaRepository.findOne.mockResolvedValue(asig());
 
-      await conSesion(sesionAdmin, () => service.completar(10, '2026-10-28T15:00:00Z', { cantidad: 120.5, unidad: 'kg', calidad: 'Primera' }));
+      await conSesion(sesionAdmin, () =>
+        service.completar(10, '2026-10-28T15:00:00Z', {
+          cantidad: 120.5,
+          unidad: 'kg',
+          calidad: 'Primera',
+        }),
+      );
 
-      const insercion = query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO cosecha'));
+      const insercion = query.mock.calls.find(([sql]) =>
+        String(sql).includes('INSERT INTO cosecha'),
+      );
       expect(insercion).toBeDefined();
-      expect(insercion![1]).toEqual([7, 1, '2026-10-28', 120.5, 'kg', 'Primera', 'Tarea #7: Cosecha', 1, 5]);
+      expect(insercion![1]).toEqual([
+        7,
+        1,
+        '2026-10-28',
+        120.5,
+        'kg',
+        'Primera',
+        'Tarea #7: Cosecha',
+        1,
+        5,
+      ]);
     });
 
     it('si la tarea no tiene cultivo avisa en vez de perder en silencio lo recolectado, y no completa', async () => {
@@ -197,8 +267,16 @@ describe('TareasService', () => {
     it('rechaza una cantidad inválida sin completar la asignación', async () => {
       mockAsignacionTareaRepository.findOne.mockResolvedValue(asig());
 
-      await expect(conSesion(sesionAdmin, () => service.completar(10, null, { cantidad: -3 }))).rejects.toThrow('mayor que cero');
-      await expect(conSesion(sesionAdmin, () => service.completar(10, null, { cantidad: NaN }))).rejects.toThrow('mayor que cero');
+      await expect(
+        conSesion(sesionAdmin, () =>
+          service.completar(10, null, { cantidad: -3 }),
+        ),
+      ).rejects.toThrow('mayor que cero');
+      await expect(
+        conSesion(sesionAdmin, () =>
+          service.completar(10, null, { cantidad: NaN }),
+        ),
+      ).rejects.toThrow('mayor que cero');
       expect(mockAsignacionTareaRepository.save).not.toHaveBeenCalled();
     });
 
@@ -207,15 +285,23 @@ describe('TareasService', () => {
 
       await conSesion(sesionAdmin, () => service.completar(10));
 
-      expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO cosecha'))).toBe(false);
+      expect(
+        query.mock.calls.some(([sql]) =>
+          String(sql).includes('INSERT INTO cosecha'),
+        ),
+      ).toBe(false);
     });
 
     it('usa kg cuando no se indica unidad', async () => {
       mockAsignacionTareaRepository.findOne.mockResolvedValue(asig());
 
-      await conSesion(sesionAdmin, () => service.completar(10, null, { cantidad: 30 }));
+      await conSesion(sesionAdmin, () =>
+        service.completar(10, null, { cantidad: 30 }),
+      );
 
-      const insercion = query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO cosecha'));
+      const insercion = query.mock.calls.find(([sql]) =>
+        String(sql).includes('INSERT INTO cosecha'),
+      );
       expect(insercion![1][4]).toBe('kg');
     });
   });
@@ -256,36 +342,52 @@ describe('TareasService', () => {
 
   describe('iniciar()', () => {
     const asig = () => ({
-      idasigtarea: 10, estado: 'Asignado', fechainicio: null,
+      idasigtarea: 10,
+      estado: 'Asignado',
+      fechainicio: null,
       idtarea: { idtarea: 7, fechainicio: null },
       idempleado: { idusuario: 1 },
     });
 
     it('guarda la hora de inicio y pasa asignación y tarea a "En progreso"', async () => {
       mockAsignacionTareaRepository.findOne.mockResolvedValue(asig());
-      mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
+      mockAsignacionTareaRepository.save.mockImplementation((a) =>
+        Promise.resolve(a),
+      );
 
       const result = await conSesion(sesionAdmin, () => service.iniciar(10));
 
       expect(result.estado).toBe('En progreso');
       expect(result.fechainicio).toBeInstanceOf(Date);
-      expect(mockTareaRepository.update).toHaveBeenCalledWith({ idtarea: 7, idfinca: 1 }, { estado: 'En progreso' });
+      expect(mockTareaRepository.update).toHaveBeenCalledWith(
+        { idtarea: 7, idfinca: 1 },
+        { estado: 'En progreso' },
+      );
     });
 
     it('usa la hora enviada por el celular (trabajo sin red) y no la del servidor', async () => {
       const real = new Date(Date.now() - 3_600_000).toISOString();
       mockAsignacionTareaRepository.findOne.mockResolvedValue(asig());
-      mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
+      mockAsignacionTareaRepository.save.mockImplementation((a) =>
+        Promise.resolve(a),
+      );
 
-      const result = await conSesion(sesionAdmin, () => service.iniciar(10, real));
+      const result = await conSesion(sesionAdmin, () =>
+        service.iniciar(10, real),
+      );
 
       expect(result.fechainicio?.toISOString()).toBe(real);
     });
 
     it('rechaza iniciar una asignación ya completada', async () => {
-      mockAsignacionTareaRepository.findOne.mockResolvedValue({ ...asig(), estado: 'Completado' });
+      mockAsignacionTareaRepository.findOne.mockResolvedValue({
+        ...asig(),
+        estado: 'Completado',
+      });
 
-      await expect(conSesion(sesionAdmin, () => service.iniciar(10))).rejects.toThrow('ya está completada');
+      await expect(
+        conSesion(sesionAdmin, () => service.iniciar(10)),
+      ).rejects.toThrow('ya está completada');
     });
   });
 });

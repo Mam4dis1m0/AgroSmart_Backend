@@ -31,11 +31,17 @@ export class RegistrarUsuarioDto {
   @IsString() @IsOptional() @MaxLength(20) telefono?: string;
 
   /** Obligatoria para administradores (RF-01). Opcional para compradores. */
-  @IsString() @IsOptional() @Matches(CEDULA, { message: 'La cédula debe tener entre 5 y 20 caracteres alfanuméricos' })
+  @IsString()
+  @IsOptional()
+  @Matches(CEDULA, {
+    message: 'La cédula debe tener entre 5 y 20 caracteres alfanuméricos',
+  })
   cedula?: string;
 
   /** 'admin' (dueño de finca) o 'comprador' (Marketplace). Por defecto 'admin'. */
-  @IsString() @IsOptional() @IsIn(['admin', 'comprador', 'empleado'])
+  @IsString()
+  @IsOptional()
+  @IsIn(['admin', 'comprador', 'empleado'])
   role?: string;
 
   @IsNumber() @Min(0) @IsOptional() montomensual?: number;
@@ -57,7 +63,10 @@ export class RegistrarEmpleadoDto {
   @IsString() @MinLength(6) @MaxLength(100) contrasena: string;
   @IsString() @IsOptional() @MaxLength(20) telefono?: string;
 
-  @IsString() @Matches(CEDULA, { message: 'La cédula debe tener entre 5 y 20 caracteres alfanuméricos' })
+  @IsString()
+  @Matches(CEDULA, {
+    message: 'La cédula debe tener entre 5 y 20 caracteres alfanuméricos',
+  })
   cedula: string;
 
   @IsNumber() @Min(0) @IsOptional() montoporhora?: number;
@@ -79,7 +88,11 @@ export class UpdateUsuarioDto {
   @IsString() @IsOptional() @MaxLength(100) primerapellido?: string;
   @IsString() @IsOptional() @MaxLength(100) segundoapellido?: string;
   @IsString() @IsOptional() @MaxLength(20) telefono?: string;
-  @IsString() @IsOptional() @Matches(CEDULA, { message: 'La cédula debe tener entre 5 y 20 caracteres alfanuméricos' })
+  @IsString()
+  @IsOptional()
+  @Matches(CEDULA, {
+    message: 'La cédula debe tener entre 5 y 20 caracteres alfanuméricos',
+  })
   cedula?: string;
 }
 
@@ -112,7 +125,10 @@ export class ResetPasswordDto {
 
 export class FotoPerfilDto {
   /** data URL base64: "data:image/jpeg;base64,..." */
-  @IsString() @Matches(/^data:image\/(png|jpe?g|webp);base64,/, { message: 'La imagen debe ser PNG, JPG o WEBP en base64' })
+  @IsString()
+  @Matches(/^data:image\/(png|jpe?g|webp);base64,/, {
+    message: 'La imagen debe ser PNG, JPG o WEBP en base64',
+  })
   imagen: string;
 }
 

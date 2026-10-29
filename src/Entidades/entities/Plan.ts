@@ -1,44 +1,58 @@
-import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
-import { numericTransformer } from "../../common/transformers";
+import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { numericTransformer } from '../../common/transformers';
 
-@Entity("plan", { schema: "public" })
+@Entity('plan', { schema: 'public' })
 export class Plan {
-  @PrimaryGeneratedColumn({ type: "integer", name: "idplan" })
+  @PrimaryGeneratedColumn({ type: 'integer', name: 'idplan' })
   idplan: number;
 
   /** FREEMIUM | PREMIUM */
-  @Column("character varying", { name: "codigo", length: 20, unique: true })
+  @Column('character varying', { name: 'codigo', length: 20, unique: true })
   codigo: string;
 
-  @Column("character varying", { name: "nombre", length: 60 })
+  @Column('character varying', { name: 'nombre', length: 60 })
   nombre: string;
 
-  @Column("text", { name: "descripcion", nullable: true })
+  @Column('text', { name: 'descripcion', nullable: true })
   descripcion: string | null;
 
-  @Column("numeric", { name: "preciomensual", precision: 12, scale: 2, transformer: numericTransformer })
+  @Column('numeric', {
+    name: 'preciomensual',
+    precision: 12,
+    scale: 2,
+    transformer: numericTransformer,
+  })
   preciomensual: number;
 
-  @Column("character varying", { name: "moneda", length: 3, default: () => "'COP'" })
+  @Column('character varying', {
+    name: 'moneda',
+    length: 3,
+    default: () => "'COP'",
+  })
   moneda: string;
 
   /** null = ilimitado */
-  @Column("integer", { name: "maxcultivos", nullable: true })
+  @Column('integer', { name: 'maxcultivos', nullable: true })
   maxcultivos: number | null;
 
-  @Column("integer", { name: "maxempleados", nullable: true })
+  @Column('integer', { name: 'maxempleados', nullable: true })
   maxempleados: number | null;
 
-  @Column("integer", { name: "maxfincas", nullable: true })
+  @Column('integer', { name: 'maxfincas', nullable: true })
   maxfincas: number | null;
 
   /** % que retiene AgroSmart por venta del Marketplace */
-  @Column("numeric", { name: "comisionmarketplace", precision: 5, scale: 2, transformer: numericTransformer })
+  @Column('numeric', {
+    name: 'comisionmarketplace',
+    precision: 5,
+    scale: 2,
+    transformer: numericTransformer,
+  })
   comisionmarketplace: number;
 
-  @Column("jsonb", { name: "funciones", default: () => "'{}'" })
+  @Column('jsonb', { name: 'funciones', default: () => "'{}'" })
   funciones: Record<string, boolean>;
 
-  @Column("boolean", { name: "activo", default: () => "true" })
+  @Column('boolean', { name: 'activo', default: () => 'true' })
   activo: boolean;
 }

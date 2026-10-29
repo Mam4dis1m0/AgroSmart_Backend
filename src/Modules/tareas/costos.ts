@@ -42,13 +42,21 @@ export interface DesgloseCosto {
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 /** Une lo medido en la tarea con el costo por hora de la finca. */
-export function armarCosto(fila: Partial<FilaCosto> | undefined, costoHora: number): DesgloseCosto {
+export function armarCosto(
+  fila: Partial<FilaCosto> | undefined,
+  costoHora: number,
+): DesgloseCosto {
   const insumos = fila?.insumos ?? 0;
   const horas = fila?.horas ?? 0;
   const transporte = fila?.transporte ?? 0;
   const mano = r2(horas * costoHora);
   return {
-    insumos, horas, personas: fila?.personas ?? 0, costoHora, mano, transporte,
+    insumos,
+    horas,
+    personas: fila?.personas ?? 0,
+    costoHora,
+    mano,
+    transporte,
     total: r2(insumos + mano + transporte),
   };
 }

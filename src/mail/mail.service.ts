@@ -3,24 +3,24 @@ import { MailerService } from '@nestjs-modules/mailer';
 
 // Datos para el correo de stock bajo
 export interface InfoStockBajoEmail {
-  nombreInsumo:  string;
-  tipo?:         string | null;
-  stockActual:   number;
-  stockMinimo:   number;
+  nombreInsumo: string;
+  tipo?: string | null;
+  stockActual: number;
+  stockMinimo: number;
   unidadMedida?: string | null;
   cantidadUsada: number;
 }
 
 // Datos extra que se incluirán en el correo de tarea asignada
 export interface InfoTareaEmail {
-  nombreTarea:        string;
-  fechaProgramada?:   string | null;
-  cultivo?:           string | null;
-  lote?:              string | null;
-  descripcion?:       string | null;
-  pagoacordado?:      number | null;
-  nombreAdmin?:       string | null;
-  tiempototal?:       number | null;
+  nombreTarea: string;
+  fechaProgramada?: string | null;
+  cultivo?: string | null;
+  lote?: string | null;
+  descripcion?: string | null;
+  pagoacordado?: number | null;
+  nombreAdmin?: string | null;
+  tiempototal?: number | null;
 }
 
 @Injectable()
@@ -44,7 +44,11 @@ export class MailService {
     } = info;
 
     // Construye filas opcionales para la tabla de detalles
-    const filaOpcional = (icono: string, etiqueta: string, valor: string | null | undefined) =>
+    const filaOpcional = (
+      icono: string,
+      etiqueta: string,
+      valor: string | null | undefined,
+    ) =>
       valor
         ? `<tr>
             <td style="padding:8px 12px;border-bottom:1px solid #f3f4f6;color:#6b7280;font-size:13px;width:140px;">${icono} ${etiqueta}</td>
@@ -53,26 +57,47 @@ export class MailService {
         : '';
 
     const detalles = [
-      filaOpcional('📅', 'Fecha programada', fechaProgramada
-        ? new Date(fechaProgramada).toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-        : null),
-      filaOpcional('🌿', 'Cultivo',    cultivo),
-      filaOpcional('🗺️', 'Lote',       lote),
+      filaOpcional(
+        '📅',
+        'Fecha programada',
+        fechaProgramada
+          ? new Date(fechaProgramada).toLocaleDateString('es-CO', {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            })
+          : null,
+      ),
+      filaOpcional('🌿', 'Cultivo', cultivo),
+      filaOpcional('🗺️', 'Lote', lote),
       filaOpcional('📝', 'Descripción', descripcion),
-      filaOpcional('⏱️', 'Tiempo estimado', tiempototal ? `${tiempototal} h` : null),
-      filaOpcional('💵', 'Pago acordado',   pagoacordado != null ? `$${pagoacordado.toLocaleString('es-CO')}` : null),
-      filaOpcional('👤', 'Asignada por',    nombreAdmin),
-    ].filter(Boolean).join('');
+      filaOpcional(
+        '⏱️',
+        'Tiempo estimado',
+        tiempototal ? `${tiempototal} h` : null,
+      ),
+      filaOpcional(
+        '💵',
+        'Pago acordado',
+        pagoacordado != null
+          ? `$${pagoacordado.toLocaleString('es-CO')}`
+          : null,
+      ),
+      filaOpcional('👤', 'Asignada por', nombreAdmin),
+    ]
+      .filter(Boolean)
+      .join('');
 
     try {
       await this.mailerService.sendMail({
-        to:      emailEmpleado,
+        to: emailEmpleado,
         subject: '📋 Nueva tarea asignada — AgroSmart',
         headers: {
-          'X-Priority':       '1',
+          'X-Priority': '1',
           'X-MSMail-Priority': 'High',
-          'Importance':        'High',
-          'Precedence':        'bulk',
+          Importance: 'High',
+          Precedence: 'bulk',
         },
         html: `
           <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f9fafb;padding:24px;border-radius:12px;">
@@ -92,10 +117,14 @@ export class MailService {
               </div>
 
               <!-- Tabla de detalles -->
-              ${detalles ? `
+              ${
+                detalles
+                  ? `
               <table style="width:100%;border-collapse:collapse;margin-bottom:24px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
                 ${detalles}
-              </table>` : ''}
+              </table>`
+                  : ''
+              }
 
               <div style="text-align:center;">
                 <a href="${process.env.FRONTEND_URL ?? 'http://localhost:5173'}"
@@ -113,7 +142,9 @@ export class MailService {
       });
       this.logger.log(`✅ Email tarea asignada enviado a ${emailEmpleado}`);
     } catch (err) {
-      this.logger.error(`❌ Error enviando email a ${emailEmpleado}: ${err.message}`);
+      this.logger.error(
+        `❌ Error enviando email a ${emailEmpleado}: ${err.message}`,
+      );
     }
   }
 
@@ -125,13 +156,13 @@ export class MailService {
   ) {
     try {
       await this.mailerService.sendMail({
-        to:      emailAdmin,
+        to: emailAdmin,
         subject: `✅ Tarea completada por ${nombreEmpleado} — AgroSmart`,
         headers: {
-          'X-Priority':       '1',
+          'X-Priority': '1',
           'X-MSMail-Priority': 'High',
-          'Importance':        'High',
-          'Precedence':        'bulk',
+          Importance: 'High',
+          Precedence: 'bulk',
         },
         html: `
           <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f9fafb;padding:24px;border-radius:12px;">
@@ -166,28 +197,40 @@ export class MailService {
           </div>
         `,
       });
-      this.logger.log(`✅ Email tarea completada enviado a admin ${emailAdmin}`);
+      this.logger.log(
+        `✅ Email tarea completada enviado a admin ${emailAdmin}`,
+      );
     } catch (err) {
-      this.logger.error(`❌ Error enviando email al admin ${emailAdmin}: ${err.message}`);
+      this.logger.error(
+        `❌ Error enviando email al admin ${emailAdmin}: ${err.message}`,
+      );
     }
   }
 
   // ── Stock bajo → email al admin ───────────────────────────────────────────
   async notificarStockBajo(emailAdmin: string, info: InfoStockBajoEmail) {
-    const { nombreInsumo, tipo, stockActual, stockMinimo, unidadMedida, cantidadUsada } = info;
+    const {
+      nombreInsumo,
+      tipo,
+      stockActual,
+      stockMinimo,
+      unidadMedida,
+      cantidadUsada,
+    } = info;
     const unidad = unidadMedida ?? '';
-    const porcentaje = stockMinimo > 0 ? Math.round((stockActual / stockMinimo) * 100) : 0;
+    const porcentaje =
+      stockMinimo > 0 ? Math.round((stockActual / stockMinimo) * 100) : 0;
     const colorBarra = stockActual <= 0 ? '#dc2626' : '#f59e0b';
 
     try {
       await this.mailerService.sendMail({
-        to:      emailAdmin,
+        to: emailAdmin,
         subject: `⚠️ Stock bajo: ${nombreInsumo} — AgroSmart`,
         headers: {
-          'X-Priority':        '1',
+          'X-Priority': '1',
           'X-MSMail-Priority': 'High',
-          'Importance':        'High',
-          'Precedence':        'bulk',
+          Importance: 'High',
+          Precedence: 'bulk',
         },
         html: `
           <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f9fafb;padding:24px;border-radius:12px;">
@@ -243,24 +286,31 @@ export class MailService {
           </div>
         `,
       });
-      this.logger.log(`✅ Email stock bajo enviado a ${emailAdmin} — insumo: ${nombreInsumo}`);
+      this.logger.log(
+        `✅ Email stock bajo enviado a ${emailAdmin} — insumo: ${nombreInsumo}`,
+      );
     } catch (err) {
-      this.logger.error(`❌ Error enviando email de stock bajo: ${err.message}`);
+      this.logger.error(
+        `❌ Error enviando email de stock bajo: ${err.message}`,
+      );
     }
   }
 
-
   // ── Recuperación de contraseña → email al usuario ─────────────────────────
-  async enviarRecuperacionPassword(email: string, token: string, nombre: string) {
+  async enviarRecuperacionPassword(
+    email: string,
+    token: string,
+    nombre: string,
+  ) {
     const resetUrl = `${process.env.FRONTEND_URL ?? 'http://localhost:5173'}/reset-password?token=${token}`;
     try {
       await this.mailerService.sendMail({
-        to:      email,
+        to: email,
         subject: '🔑 Recuperación de contraseña — AgroSmart',
         headers: {
-          'X-Priority':        '1',
+          'X-Priority': '1',
           'X-MSMail-Priority': 'High',
-          'Importance':        'High',
+          Importance: 'High',
         },
         html: `
           <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f9fafb;padding:24px;border-radius:12px;">
@@ -296,7 +346,9 @@ export class MailService {
       });
       this.logger.log(`✅ Email recuperación contraseña enviado a ${email}`);
     } catch (err) {
-      this.logger.error(`❌ Error enviando email de recuperación a ${email}: ${err.message}`);
+      this.logger.error(
+        `❌ Error enviando email de recuperación a ${email}: ${err.message}`,
+      );
     }
   }
 
@@ -304,19 +356,25 @@ export class MailService {
   async enviarSmsFallback(telefono: string, mensaje: string) {
     try {
       const accountSid = process.env.TWILIO_SID;
-      const authToken  = process.env.TWILIO_TOKEN;
-      const from       = process.env.TWILIO_PHONE;
+      const authToken = process.env.TWILIO_TOKEN;
+      const from = process.env.TWILIO_PHONE;
 
       const response = await fetch(
         `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
         {
           method: 'POST',
           headers: {
-            'Authorization': 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64'),
-            'Content-Type':  'application/x-www-form-urlencoded',
+            Authorization:
+              'Basic ' +
+              Buffer.from(`${accountSid}:${authToken}`).toString('base64'),
+            'Content-Type': 'application/x-www-form-urlencoded',
           },
-          body: new URLSearchParams({ From: from!, To: telefono, Body: mensaje }),
-        }
+          body: new URLSearchParams({
+            From: from!,
+            To: telefono,
+            Body: mensaje,
+          }),
+        },
       );
 
       if (!response.ok) throw new Error(await response.text());
@@ -327,15 +385,20 @@ export class MailService {
   }
 
   async notificarTareaCompletadaConEvidencia(
-  emailAdmin: string, idTarea: number, tipoactividad: string,
-  nombreEmpleado: string, lote: string, fechaprogramada: string,
-  observaciones: string, pdfBuffer: Buffer,
-) {
-  try {
-    await this.mailerService.sendMail({
-      to: emailAdmin,
-      subject: `✅ Tarea #${idTarea} completada — ${tipoactividad}`,
-      html: `
+    emailAdmin: string,
+    idTarea: number,
+    tipoactividad: string,
+    nombreEmpleado: string,
+    lote: string,
+    fechaprogramada: string,
+    observaciones: string,
+    pdfBuffer: Buffer,
+  ) {
+    try {
+      await this.mailerService.sendMail({
+        to: emailAdmin,
+        subject: `✅ Tarea #${idTarea} completada — ${tipoactividad}`,
+        html: `
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f9fafb;padding:24px;border-radius:12px;">
           <div style="background:#16a34a;border-radius:10px;padding:28px;text-align:center;margin-bottom:24px;">
             <h1 style="color:#fff;margin:0;font-size:22px;">🌱 AgroSmart</h1>
@@ -347,15 +410,19 @@ export class MailService {
           </div>
         </div>
       `,
-      attachments: [{
-        filename: `reporte_tarea_${idTarea}_${Date.now()}.pdf`,
-        content: pdfBuffer,
-        contentType: 'application/pdf',
-      }],
-    });
-    this.logger.log(`✅ Email con evidencia enviado a ${emailAdmin}`);
-  } catch (err) {
-    this.logger.error(`❌ Error enviando email con evidencia: ${(err as Error).message}`);
+        attachments: [
+          {
+            filename: `reporte_tarea_${idTarea}_${Date.now()}.pdf`,
+            content: pdfBuffer,
+            contentType: 'application/pdf',
+          },
+        ],
+      });
+      this.logger.log(`✅ Email con evidencia enviado a ${emailAdmin}`);
+    } catch (err) {
+      this.logger.error(
+        `❌ Error enviando email con evidencia: ${(err as Error).message}`,
+      );
+    }
   }
-}
 }

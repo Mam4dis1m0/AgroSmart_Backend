@@ -35,17 +35,21 @@ export class AuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly tokens: TokenService,
     private readonly sesiones: SesionService,
-    @InjectRepository(Auditoria) private readonly auditoriaRepo: Repository<Auditoria>,
+    @InjectRepository(Auditoria)
+    private readonly auditoriaRepo: Repository<Auditoria>,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     if (context.getType() !== 'http') return true;
 
     const objetivos = [context.getHandler(), context.getClass()];
-    if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, objetivos)) return true;
+    if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, objetivos))
+      return true;
 
     const req = context.switchToHttp().getRequest();
-    const [esquema, token] = String(req.headers?.authorization ?? '').split(' ');
+    const [esquema, token] = String(req.headers?.authorization ?? '').split(
+      ' ',
+    );
     if (esquema !== 'Bearer' || !token) {
       throw new UnauthorizedException('Falta el token de autenticación');
     }
@@ -57,19 +61,26 @@ export class AuthGuard implements CanActivate {
       user.rol === 'comprador' ? null : user.idfinca,
     );
     if (!activa) {
-      throw new UnauthorizedException('Cuenta inactiva o sin acceso a esta finca');
+      throw new UnauthorizedException(
+        'Cuenta inactiva o sin acceso a esta finca',
+      );
     }
 
     req.user = user;
     TenantContext.setUser(user);
 
-    const roles = this.reflector.getAllAndOverride<Rol[]>(ROLES_KEY, objetivos) ?? ROLES_POR_DEFECTO;
+    const roles =
+      this.reflector.getAllAndOverride<Rol[]>(ROLES_KEY, objetivos) ??
+      ROLES_POR_DEFECTO;
     if (!roles.includes(user.rol)) {
       this.registrarDenegado(req, user);
       throw new ForbiddenException('Acceso no autorizado');
     }
 
-    const sinFinca = this.reflector.getAllAndOverride<boolean>(SIN_FINCA_KEY, objetivos);
+    const sinFinca = this.reflector.getAllAndOverride<boolean>(
+      SIN_FINCA_KEY,
+      objetivos,
+    );
     if (!sinFinca && user.rol !== 'comprador' && user.idfinca === null) {
       throw new ForbiddenException('Debes seleccionar una finca activa');
     }
@@ -93,6 +104,10 @@ export class AuthGuard implements CanActivate {
           }),
         ),
       )
-      .catch((err) => this.logger.warn(`No se pudo auditar el acceso denegado: ${err?.message ?? err}`));
+      .catch((err) =>
+        this.logger.warn(
+          `No se pudo auditar el acceso denegado: ${err?.message ?? err}`,
+        ),
+      );
   }
 }

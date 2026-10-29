@@ -14,13 +14,24 @@ import {
 // Servicio mínimo que usa la clase base igual que los módulos reales (cultivos, insumos...)
 class ServicioDePrueba extends BaseOfflineService<any> {
   constructor(repo: any) {
-    super(repo, mockCacheService as any, mockOfflineQueueService as any, mockSyncService as any, 'cultivo', 'idcultivo');
+    super(
+      repo,
+      mockCacheService as any,
+      mockOfflineQueueService as any,
+      mockSyncService as any,
+      'cultivo',
+      'idcultivo',
+    );
   }
   listar() {
-    return this.findAllOffline(() => this.repo.find({ where: this.where() } as any));
+    return this.findAllOffline(() =>
+      this.repo.find({ where: this.where() } as any),
+    );
   }
   crear(dto: any) {
-    return this.createOffline(dto, () => this.repo.save(this.repo.create(this.withFinca(dto))));
+    return this.createOffline(dto, () =>
+      this.repo.save(this.repo.create(this.withFinca(dto))),
+    );
   }
   actualizarOffline(id: number, dto: any) {
     return this.updateOffline(id, dto, async () => dto);
@@ -59,8 +70,14 @@ describe('Aislamiento multi-tenant en BaseOfflineService', () => {
     });
 
     it('un comprador (sin finca) se aísla por usuario', async () => {
-      const c1 = await conSesion({ idusuario: 50, email: 'a', rol: 'comprador', idfinca: null }, async () => svc.clave());
-      const c2 = await conSesion({ idusuario: 51, email: 'b', rol: 'comprador', idfinca: null }, async () => svc.clave());
+      const c1 = await conSesion(
+        { idusuario: 50, email: 'a', rol: 'comprador', idfinca: null },
+        async () => svc.clave(),
+      );
+      const c2 = await conSesion(
+        { idusuario: 51, email: 'b', rol: 'comprador', idfinca: null },
+        async () => svc.clave(),
+      );
       expect(c1).not.toBe(c2);
     });
   });
@@ -76,9 +93,14 @@ describe('Aislamiento multi-tenant en BaseOfflineService', () => {
       repo.create.mockImplementation((x) => x);
       repo.save.mockImplementation((x) => Promise.resolve(x));
 
-      await conSesion(sesionAdmin, () => svc.crear({ nombrelote: 'Lote A', idfinca: 999 }));
+      await conSesion(sesionAdmin, () =>
+        svc.crear({ nombrelote: 'Lote A', idfinca: 999 }),
+      );
 
-      expect(repo.create).toHaveBeenCalledWith({ nombrelote: 'Lote A', idfinca: 1 });
+      expect(repo.create).toHaveBeenCalledWith({
+        nombrelote: 'Lote A',
+        idfinca: 1,
+      });
     });
 
     it('sin finca activa no se consulta nada: 403 (nunca "sin filtro")', async () => {
@@ -90,13 +112,17 @@ describe('Aislamiento multi-tenant en BaseOfflineService', () => {
 
     it('borrar solo afecta a registros de la finca activa y responde 404 si es de otra', async () => {
       repo.delete.mockResolvedValue({ affected: 0 });
-      await expect(conSesion(sesionAdmin, () => svc.borrar(77))).rejects.toThrow(/no existe en esta finca/);
+      await expect(
+        conSesion(sesionAdmin, () => svc.borrar(77)),
+      ).rejects.toThrow(/no existe en esta finca/);
       expect(repo.delete).toHaveBeenCalledWith({ idcultivo: 77, idfinca: 1 });
     });
 
     it('borrar algo con dependencias responde 409 en vez de un error 500 (RNF-06)', async () => {
       repo.delete.mockRejectedValue({ code: '23503' });
-      await expect(conSesion(sesionAdmin, () => svc.borrar(5))).rejects.toThrow(/registros asociados/);
+      await expect(conSesion(sesionAdmin, () => svc.borrar(5))).rejects.toThrow(
+        /registros asociados/,
+      );
     });
   });
 
@@ -104,7 +130,9 @@ describe('Aislamiento multi-tenant en BaseOfflineService', () => {
     beforeEach(() => mockSyncService.isOnline.mockResolvedValue(false));
 
     it('lo creado offline viaja a la cola con la finca de la sesión (no la del cliente)', async () => {
-      await conSesion(sesionAdmin, () => svc.crear({ nombrelote: 'Lote B', idfinca: 999 }));
+      await conSesion(sesionAdmin, () =>
+        svc.crear({ nombrelote: 'Lote B', idfinca: 999 }),
+      );
 
       expect(mockOfflineQueueService.add).toHaveBeenCalledWith(
         'cultivo',
@@ -114,7 +142,9 @@ describe('Aislamiento multi-tenant en BaseOfflineService', () => {
     });
 
     it('un UPDATE offline lleva la finca para que SyncService no pise filas de otra finca', async () => {
-      await conSesion(sesionAdmin, () => svc.actualizarOffline(5, { nombrelote: 'X', idfinca: 999 }));
+      await conSesion(sesionAdmin, () =>
+        svc.actualizarOffline(5, { nombrelote: 'X', idfinca: 999 }),
+      );
 
       const [, , payload] = mockOfflineQueueService.add.mock.calls[0];
       expect(payload).toEqual({ idcultivo: 5, nombrelote: 'X', idfinca: 1 });

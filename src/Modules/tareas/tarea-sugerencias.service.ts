@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { filas } from '../../common/sql';
 import { AuthUser } from '../../auth/tenant-context';
@@ -18,7 +22,12 @@ export interface InsumoSugerido {
   /** Hectáreas del lote del cultivo con las que se escaló la cantidad (null = sin área registrada, no se escala). */
   hectareas: number | null;
   /** Otros insumos de la finca del mismo tipo, por si el empleado prefiere otro. */
-  candidatos: { idinsumo: number; nombre: string; unidadmedida: string | null; stockactual: number }[];
+  candidatos: {
+    idinsumo: number;
+    nombre: string;
+    unidadmedida: string | null;
+    stockactual: number;
+  }[];
 }
 
 const redondear = (n: number) => Math.round(n * 100) / 100;
@@ -33,7 +42,13 @@ export class TareaSugerenciasService {
 
   /** La tarea debe ser de la finca y, si quien consulta es empleado, estarle asignada. */
   private async acceso(idfinca: number, idtarea: number, user: AuthUser) {
-    const [t] = filas<{ tipoactividad: string | null; idplantilla: number | null; horasestimadas: number | null; costototal: number | null; hectareas: number | null }>(
+    const [t] = filas<{
+      tipoactividad: string | null;
+      idplantilla: number | null;
+      horasestimadas: number | null;
+      costototal: number | null;
+      hectareas: number | null;
+    }>(
       await this.ds.query(
         `SELECT t.tipoactividad, t.idplantilla, t.horasestimadas::float8 AS horasestimadas, t.costototal::float8 AS costototal,
                 NULLIF(l.areahectareas, 0)::float8 AS hectareas
@@ -55,19 +70,33 @@ export class TareaSugerenciasService {
     return t;
   }
 
-  async insumosSugeridos(idfinca: number, idtarea: number, user: AuthUser): Promise<InsumoSugerido[]> {
+  async insumosSugeridos(
+    idfinca: number,
+    idtarea: number,
+    user: AuthUser,
+  ): Promise<InsumoSugerido[]> {
     const t = await this.acceso(idfinca, idtarea, user);
     const actividad = t.tipoactividad ?? '';
 
     const yaUsados = new Set(
       filas<{ idinsumo: number }>(
-        await this.ds.query(`SELECT idinsumo FROM detalle_tarea WHERE idtarea = $1 AND idfinca = $2`, [idtarea, idfinca]),
+        await this.ds.query(
+          `SELECT idinsumo FROM detalle_tarea WHERE idtarea = $1 AND idfinca = $2`,
+          [idtarea, idfinca],
+        ),
       ).map((r) => r.idinsumo),
     );
 
     // Lo que se gastó en esta labor las veces anteriores: promedio y frecuencia por insumo
     // Lo gastado antes se lleva a «por hectárea» para poder aplicarlo a lotes de otro tamaño
-    const historial = filas<{ idinsumo: number; nombre: string; unidadmedida: string | null; stockactual: number; cantidad: number; porhectarea: number | null }>(
+    const historial = filas<{
+      idinsumo: number;
+      nombre: string;
+      unidadmedida: string | null;
+      stockactual: number;
+      cantidad: number;
+      porhectarea: number | null;
+    }>(
       await this.ds.query(
         `SELECT d.idinsumo, i.nombre, i.unidadmedida, i.stockactual::float8 AS stockactual,
                 AVG(d.cantidadusada)::float8 AS cantidad,
@@ -85,15 +114,27 @@ export class TareaSugerenciasService {
     );
     const ha = t.hectareas;
     /** Cantidad histórica para este lote: por hectárea × hectáreas; si no hay área en alguno, el promedio simple. */
-    const delHistorial = (h: { cantidad: number; porhectarea: number | null }) =>
-      ha && h.porhectarea ? redondear(h.porhectarea * ha) : redondear(h.cantidad);
-    const promedio = new Map(historial.map((h) => [h.idinsumo, delHistorial(h)]));
+    const delHistorial = (h: {
+      cantidad: number;
+      porhectarea: number | null;
+    }) =>
+      ha && h.porhectarea
+        ? redondear(h.porhectarea * ha)
+        : redondear(h.cantidad);
+    const promedio = new Map(
+      historial.map((h) => [h.idinsumo, delHistorial(h)]),
+    );
 
     const salida: InsumoSugerido[] = [];
     const vistos = new Set<number>();
 
     if (t.idplantilla) {
-      const filasPlantilla = filas<{ idinsumo: number | null; tipoinsumo: string | null; unidad: string | null; cantidadsugerida: number | null }>(
+      const filasPlantilla = filas<{
+        idinsumo: number | null;
+        tipoinsumo: string | null;
+        unidad: string | null;
+        cantidadsugerida: number | null;
+      }>(
         await this.ds.query(
           `SELECT idinsumo, tipoinsumo, unidad, cantidadsugerida::float8 AS cantidadsugerida
              FROM plantilla_labor_insumo WHERE idplantilla = $1 ORDER BY idplantillainsumo`,
@@ -102,7 +143,14 @@ export class TareaSugerenciasService {
       );
       for (const p of filasPlantilla) {
         let candidatos: InsumoSugerido['candidatos'] = [];
-        let elegido: { idinsumo: number; nombre: string; unidadmedida: string | null; stockactual: number } | undefined;
+        let elegido:
+          | {
+              idinsumo: number;
+              nombre: string;
+              unidadmedida: string | null;
+              stockactual: number;
+            }
+          | undefined;
 
         if (p.idinsumo) {
           candidatos = filas(
@@ -121,10 +169,17 @@ export class TareaSugerenciasService {
             ),
           );
           // Si ya se usó uno de ese tipo antes en esta labor, ese es el preferido
-          elegido = candidatos.find((c) => promedio.has(c.idinsumo)) ?? candidatos.find((c) => c.stockactual > 0) ?? candidatos[0];
+          elegido =
+            candidatos.find((c) => promedio.has(c.idinsumo)) ??
+            candidatos.find((c) => c.stockactual > 0) ??
+            candidatos[0];
         }
 
-        if (elegido && (yaUsados.has(elegido.idinsumo) || vistos.has(elegido.idinsumo))) continue;
+        if (
+          elegido &&
+          (yaUsados.has(elegido.idinsumo) || vistos.has(elegido.idinsumo))
+        )
+          continue;
         if (elegido) vistos.add(elegido.idinsumo);
 
         salida.push({
@@ -132,7 +187,12 @@ export class TareaSugerenciasService {
           nombre: elegido?.nombre ?? p.tipoinsumo ?? 'Insumo',
           unidad: elegido?.unidadmedida ?? p.unidad,
           // La cantidad de la plantilla es por hectárea
-          cantidad: p.cantidadsugerida !== null ? redondear(p.cantidadsugerida * (ha ?? 1)) : elegido ? promedio.get(elegido.idinsumo) ?? null : null,
+          cantidad:
+            p.cantidadsugerida !== null
+              ? redondear(p.cantidadsugerida * (ha ?? 1))
+              : elegido
+                ? (promedio.get(elegido.idinsumo) ?? null)
+                : null,
           hectareas: ha,
           stockactual: elegido?.stockactual ?? null,
           origen: 'plantilla',
@@ -164,7 +224,9 @@ export class TareaSugerenciasService {
   async costos(idfinca: number, idtarea: number, user: AuthUser) {
     const t = await this.acceso(idfinca, idtarea, user);
     const consulta = (q: string, par?: any[]) => this.ds.query(q, par);
-    const [fila] = filas<FilaCosto>(await consulta(COSTO_TAREA_SQL, [idtarea, idfinca]));
+    const [fila] = filas<FilaCosto>(
+      await consulta(COSTO_TAREA_SQL, [idtarea, idfinca]),
+    );
     const c = armarCosto(fila, await costoHoraDeFinca(consulta, idfinca));
     return {
       estimado: t.costototal ?? 0,
@@ -180,7 +242,10 @@ export class TareaSugerenciasService {
 
   /** Costo y tiempo promedio de lo ya completado, por labor o por cultivo (base para análisis). */
   async resumen(idfinca: number, agrupar: 'actividad' | 'cultivo') {
-    const clave = agrupar === 'cultivo' ? `COALESCE(c.tipo, 'Sin cultivo')` : `COALESCE(t.tipoactividad, 'Sin nombre')`;
+    const clave =
+      agrupar === 'cultivo'
+        ? `COALESCE(c.tipo, 'Sin cultivo')`
+        : `COALESCE(t.tipoactividad, 'Sin nombre')`;
     return filas(
       await this.ds.query(
         `SELECT ${clave} AS clave, count(*)::int AS tareas,

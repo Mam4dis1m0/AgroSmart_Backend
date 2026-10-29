@@ -17,11 +17,16 @@ describe('ProduccionPalmaController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ProduccionPalmaController],
       providers: [
-        { provide: ProduccionPalmaService, useValue: mockProduccionPalmaService },
+        {
+          provide: ProduccionPalmaService,
+          useValue: mockProduccionPalmaService,
+        },
       ],
     }).compile();
 
-    controller = module.get<ProduccionPalmaController>(ProduccionPalmaController);
+    controller = module.get<ProduccionPalmaController>(
+      ProduccionPalmaController,
+    );
   });
 
   afterEach(() => {

@@ -27,7 +27,7 @@ export class DetalleTarea {
     scale: 2,
     transformer: numericTransformer,
   })
-  cantidadusada: number | null;  // ✅
+  cantidadusada: number | null; // ✅
 
   @ManyToOne(() => Insumo, (insumo) => insumo.detalleTareas)
   @JoinColumn([{ name: 'idinsumo', referencedColumnName: 'idinsumo' }])

@@ -10,9 +10,17 @@ import {
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
-import { CurrentUser, RequiereFuncion, Roles } from '../../auth/auth.decorators';
+import {
+  CurrentUser,
+  RequiereFuncion,
+  Roles,
+} from '../../auth/auth.decorators';
 import { AuthUser, TenantContext } from '../../auth/tenant-context';
-import { AjustarDeduccionesDto, AjustarUnidadesDto, CreateNominaDto } from '../../dto/nomina.dto';
+import {
+  AjustarDeduccionesDto,
+  AjustarUnidadesDto,
+  CreateNominaDto,
+} from '../../dto/nomina.dto';
 import { NominaService } from './nomina.service';
 
 // Nómina y control de pagos: función Premium (RF-37). El PlanGuard devuelve 403 PLAN_PREMIUM_REQUERIDO.
@@ -30,7 +38,12 @@ export class NominaController {
 
   @Post()
   crear(@Body() dto: CreateNominaDto, @CurrentUser() user: AuthUser) {
-    return this.service.crear(dto.fechainicio, dto.fechafin, user.idusuario, TenantContext.requireFinca());
+    return this.service.crear(
+      dto.fechainicio,
+      dto.fechafin,
+      user.idusuario,
+      TenantContext.requireFinca(),
+    );
   }
 
   @Get(':id')
@@ -39,18 +52,39 @@ export class NominaController {
   }
 
   @Patch('detalle/:iddetalle/deducciones')
-  ajustar(@Param('iddetalle', ParseIntPipe) iddetalle: number, @Body() dto: AjustarDeduccionesDto) {
-    return this.service.ajustarDeducciones(iddetalle, dto.deducciones, TenantContext.requireFinca());
+  ajustar(
+    @Param('iddetalle', ParseIntPipe) iddetalle: number,
+    @Body() dto: AjustarDeduccionesDto,
+  ) {
+    return this.service.ajustarDeducciones(
+      iddetalle,
+      dto.deducciones,
+      TenantContext.requireFinca(),
+    );
   }
 
   @Patch('detalle/:iddetalle/unidades')
-  ajustarUnidades(@Param('iddetalle', ParseIntPipe) iddetalle: number, @Body() dto: AjustarUnidadesDto) {
-    return this.service.ajustarUnidades(iddetalle, dto.unidades, TenantContext.requireFinca());
+  ajustarUnidades(
+    @Param('iddetalle', ParseIntPipe) iddetalle: number,
+    @Body() dto: AjustarUnidadesDto,
+  ) {
+    return this.service.ajustarUnidades(
+      iddetalle,
+      dto.unidades,
+      TenantContext.requireFinca(),
+    );
   }
 
   @Patch(':id/confirmar')
-  confirmar(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
-    return this.service.confirmar(id, TenantContext.requireFinca(), user.idusuario);
+  confirmar(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.service.confirmar(
+      id,
+      TenantContext.requireFinca(),
+      user.idusuario,
+    );
   }
 
   @Patch(':id/pagar')

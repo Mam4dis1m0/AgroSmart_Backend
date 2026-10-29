@@ -22,5 +22,8 @@ export class RangoFechasDto {
 }
 
 export class ExportarDto extends RangoFechasDto {
-  @IsIn(['gastos', 'insumos', 'cultivo']) tipo: 'gastos' | 'insumos' | 'cultivo';
+  @IsIn(['gastos', 'insumos', 'cultivo']) tipo:
+    | 'gastos'
+    | 'insumos'
+    | 'cultivo';
 }

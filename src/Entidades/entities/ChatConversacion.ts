@@ -1,16 +1,16 @@
-import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
-@Entity("chat_conversacion", { schema: "public" })
+@Entity('chat_conversacion', { schema: 'public' })
 export class ChatConversacion {
-  @PrimaryGeneratedColumn({ type: "integer", name: "idconversacion" })
+  @PrimaryGeneratedColumn({ type: 'integer', name: 'idconversacion' })
   idconversacion: number;
 
-  @Column("integer", { name: "idfinca" })
+  @Column('integer', { name: 'idfinca' })
   idfinca: number;
 
-  @Column("integer", { name: "idusuario" })
+  @Column('integer', { name: 'idusuario' })
   idusuario: number;
 
-  @Column("character varying", { name: "titulo", nullable: true, length: 150 })
+  @Column('character varying', { name: 'titulo', nullable: true, length: 150 })
   titulo: string | null;
 }

@@ -3,42 +3,42 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
 import { DatabaseModule } from './common/database.module';
-import { CommonModule }   from './common/common.module';
-import { AuthModule }     from './auth/auth.module';
+import { CommonModule } from './common/common.module';
+import { AuthModule } from './auth/auth.module';
 import { MensajeriaModule } from './Modules/mensajeria/mensajeria.module';
-import { UsuariosModule }        from './Modules/usuarios/usuarios.module';
-import { AdministradorModule }   from './Modules/administrador/administrador.module';
-import { EmpleadoModule }        from './Modules/empleado/empleado.module';
-import { LotesModule }           from './Modules/lotes/lotes.module';
-import { PalmasModule }          from './Modules/palmas/palmas.module';
-import { CultivosModule }        from './Modules/cultivos/cultivos.module';
+import { UsuariosModule } from './Modules/usuarios/usuarios.module';
+import { AdministradorModule } from './Modules/administrador/administrador.module';
+import { EmpleadoModule } from './Modules/empleado/empleado.module';
+import { LotesModule } from './Modules/lotes/lotes.module';
+import { PalmasModule } from './Modules/palmas/palmas.module';
+import { CultivosModule } from './Modules/cultivos/cultivos.module';
 import { ProduccionPalmaModule } from './Modules/produccion-palma/produccion-palma.module';
-import { InsumosModule }         from './Modules/insumos/insumos.module';
-import { TareasModule }          from './Modules/tareas/tareas.module';
-import { PlantillasModule }      from './Modules/plantillas/plantillas.module';
-import { DetalleTareaModule }    from './Modules/detalle-tarea/detalle-tarea.module';
+import { InsumosModule } from './Modules/insumos/insumos.module';
+import { TareasModule } from './Modules/tareas/tareas.module';
+import { PlantillasModule } from './Modules/plantillas/plantillas.module';
+import { DetalleTareaModule } from './Modules/detalle-tarea/detalle-tarea.module';
 import { AsignacionTareaModule } from './Modules/asignacion-tarea/asignacion-tarea.module';
 import { EmpleadoCosechaModule } from './Modules/empleado-cosecha/empleado-cosecha.module';
-import { NotificacionesModule }  from './Modules/notificaciones/notificaciones.module';
-import { AuditoriaModule }       from './Modules/auditoria/auditoria.module';
-import { ChatModule }            from './Modules/Chat/chat.module';
-import { MailModule }            from './mail/mail.module';
+import { NotificacionesModule } from './Modules/notificaciones/notificaciones.module';
+import { AuditoriaModule } from './Modules/auditoria/auditoria.module';
+import { ChatModule } from './Modules/Chat/chat.module';
+import { MailModule } from './mail/mail.module';
 
 // ── Multi-tenant, planes SaaS y capa de negocio (documento, sección 1.5) ──────
-import { FincasModule }          from './Modules/fincas/fincas.module';
-import { SuscripcionesModule }   from './Modules/suscripciones/suscripciones.module';
-import { CosechasModule }        from './Modules/cosechas/cosechas.module';
-import { MarketplaceModule }     from './Modules/marketplace/marketplace.module';
-import { NominaModule }          from './Modules/nomina/nomina.module';
-import { ReportesModule }        from './Modules/reportes/reportes.module';
+import { FincasModule } from './Modules/fincas/fincas.module';
+import { SuscripcionesModule } from './Modules/suscripciones/suscripciones.module';
+import { CosechasModule } from './Modules/cosechas/cosechas.module';
+import { MarketplaceModule } from './Modules/marketplace/marketplace.module';
+import { NominaModule } from './Modules/nomina/nomina.module';
+import { ReportesModule } from './Modules/reportes/reportes.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     DatabaseModule,
     CommonModule,
-    AuthModule,   
-      MensajeriaModule,       // JWT + guards globales (rol, finca activa, plan)
+    AuthModule,
+    MensajeriaModule, // JWT + guards globales (rol, finca activa, plan)
     UsuariosModule,
     AdministradorModule,
     EmpleadoModule,

@@ -1,11 +1,18 @@
 // src/Modules/detalle-tarea/detalle-tarea.service.ts
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DetalleTarea } from '../../Entidades/entities/DetalleTarea';
 import { Insumo } from '../../Entidades/entities/Insumo';
 import { Tarea } from '../../Entidades/entities/Tarea';
-import { CreateDetalleTareaDto, UpdateDetalleTareaDto } from '../../dto/detalle-tarea.dto';
+import {
+  CreateDetalleTareaDto,
+  UpdateDetalleTareaDto,
+} from '../../dto/detalle-tarea.dto';
 import { CacheService } from '../../common/cache.service';
 import { OfflineQueueService } from '../../common/offline-queue.service';
 import { SyncService } from '../../common/sync.service';
@@ -32,13 +39,19 @@ export class DetalleTareaService extends BaseOfflineService<DetalleTarea> {
 
   findAll() {
     return this.findAllOffline(() =>
-      this.repo.find({ where: this.where(), relations: ['idtarea', 'idinsumo'] }),
+      this.repo.find({
+        where: this.where(),
+        relations: ['idtarea', 'idinsumo'],
+      }),
     );
   }
 
   findOne(id: number) {
     return this.findOneOffline(id, () =>
-      this.repo.findOne({ where: this.where({ iddetalletarea: id }), relations: ['idtarea', 'idinsumo'] }),
+      this.repo.findOne({
+        where: this.where({ iddetalletarea: id }),
+        relations: ['idtarea', 'idinsumo'],
+      }),
     );
   }
 
@@ -46,15 +59,32 @@ export class DetalleTareaService extends BaseOfflineService<DetalleTarea> {
     const online = await this.sync.isOnline();
     if (!online) {
       const all = this.cache.get<DetalleTarea[]>(this.cacheKeyAll()) ?? [];
-      return all.filter((d: any) => d.idtarea?.idtarea === idtarea || d.idtarea === idtarea);
+      return all.filter(
+        (d: any) => d.idtarea?.idtarea === idtarea || d.idtarea === idtarea,
+      );
     }
-    return this.repo.find({ where: this.where({ idtarea }), relations: ['idinsumo'] });
+    return this.repo.find({
+      where: this.where({ idtarea }),
+      relations: ['idinsumo'],
+    });
   }
 
-  private async validarReferencias(dto: { idinsumo?: number; idtarea?: number }) {
-    if (dto.idinsumo) await this.assertEnFinca(this.insumoRepo, { idinsumo: dto.idinsumo }, 'El insumo');
+  private async validarReferencias(dto: {
+    idinsumo?: number;
+    idtarea?: number;
+  }) {
+    if (dto.idinsumo)
+      await this.assertEnFinca(
+        this.insumoRepo,
+        { idinsumo: dto.idinsumo },
+        'El insumo',
+      );
     if (dto.idtarea) {
-      await this.assertEnFinca(this.repo.manager.getRepository(Tarea), { idtarea: dto.idtarea }, 'La tarea');
+      await this.assertEnFinca(
+        this.repo.manager.getRepository(Tarea),
+        { idtarea: dto.idtarea },
+        'La tarea',
+      );
     }
   }
 
@@ -64,7 +94,10 @@ export class DetalleTareaService extends BaseOfflineService<DetalleTarea> {
 
     if (online && dto.idinsumo && dto.cantidadusada) {
       const cantidad = Number(dto.cantidadusada);
-      if (!(cantidad > 0)) throw new BadRequestException('La cantidad usada debe ser mayor que cero');
+      if (!(cantidad > 0))
+        throw new BadRequestException(
+          'La cantidad usada debe ser mayor que cero',
+        );
 
       await this.validarReferencias(dto);
       const idfinca = this.idfinca;
@@ -83,13 +116,15 @@ export class DetalleTareaService extends BaseOfflineService<DetalleTarea> {
           ),
         );
         if (upd.length === 0) {
-          throw new BadRequestException('Stock insuficiente para registrar este consumo');
+          throw new BadRequestException(
+            'Stock insuficiente para registrar este consumo',
+          );
         }
 
         const entity = m.create(DetalleTarea, {
           ...this.withFinca(dto),
           idinsumo: { idinsumo: dto.idinsumo } as any,
-          idtarea:  dto.idtarea ? { idtarea: dto.idtarea } as any : undefined,
+          idtarea: dto.idtarea ? ({ idtarea: dto.idtarea } as any) : undefined,
         });
         return m.save(DetalleTarea, entity);
       });
@@ -103,7 +138,7 @@ export class DetalleTareaService extends BaseOfflineService<DetalleTarea> {
       if (insumo) {
         this.updateCacheListDeInsumo(insumo);
         const stockNuevo = Number(insumo.stockactual ?? 0);
-        const stockMin   = Number(insumo.stockminimo ?? 0);
+        const stockMin = Number(insumo.stockminimo ?? 0);
 
         this.logger.log(
           `📦 Insumo #${dto.idinsumo} "${insumo.nombre}": ${stockNuevo + cantidad} → ${stockNuevo} ${insumo.unidadmedida ?? ''}`,
@@ -112,17 +147,21 @@ export class DetalleTareaService extends BaseOfflineService<DetalleTarea> {
         // Avisar por correo si quedó bajo el mínimo
         if (stockNuevo < stockMin) {
           const emailAdmin =
-            (insumo.idadminregistro as any)?.idusuario2?.email || TenantContext.user()?.email || null;
+            (insumo.idadminregistro as any)?.idusuario2?.email ||
+            TenantContext.user()?.email ||
+            null;
           if (emailAdmin) {
             await this.mailService.notificarStockBajo(emailAdmin, {
-              nombreInsumo:  insumo.nombre ?? 'Sin nombre',
-              tipo:          insumo.tipo,
-              stockActual:   stockNuevo,
-              stockMinimo:   stockMin,
-              unidadMedida:  insumo.unidadmedida,
+              nombreInsumo: insumo.nombre ?? 'Sin nombre',
+              tipo: insumo.tipo,
+              stockActual: stockNuevo,
+              stockMinimo: stockMin,
+              unidadMedida: insumo.unidadmedida,
               cantidadUsada: cantidad,
             });
-            this.logger.warn(`⚠️ Stock bajo notificado para insumo "${insumo.nombre}"`);
+            this.logger.warn(
+              `⚠️ Stock bajo notificado para insumo "${insumo.nombre}"`,
+            );
           }
         }
       }
@@ -135,8 +174,10 @@ export class DetalleTareaService extends BaseOfflineService<DetalleTarea> {
       await this.validarReferencias(dto);
       const entity = this.repo.create({
         ...this.withFinca(dto),
-        idinsumo: dto.idinsumo ? { idinsumo: dto.idinsumo } as any : undefined,
-        idtarea:  dto.idtarea  ? { idtarea:  dto.idtarea }  as any : undefined,
+        idinsumo: dto.idinsumo
+          ? ({ idinsumo: dto.idinsumo } as any)
+          : undefined,
+        idtarea: dto.idtarea ? ({ idtarea: dto.idtarea } as any) : undefined,
       });
       return this.repo.save(entity);
     });
@@ -147,10 +188,16 @@ export class DetalleTareaService extends BaseOfflineService<DetalleTarea> {
    * vista del administrador de la finca (las claves llevan la finca, ver tenantTag()).
    */
   private updateCacheListDeInsumo(insumo: Insumo) {
-    const prefijos = new Set([`insumo_${this.tenantTag()}`, `insumo_f${this.idfinca}`]);
+    const prefijos = new Set([
+      `insumo_${this.tenantTag()}`,
+      `insumo_f${this.idfinca}`,
+    ]);
     for (const prefijo of prefijos) {
       const todos: any[] = this.cache.get<any[]>(`${prefijo}_all`) ?? [];
-      this.cache.set(`${prefijo}_all`, todos.map((i: any) => (i.idinsumo === insumo.idinsumo ? insumo : i)));
+      this.cache.set(
+        `${prefijo}_all`,
+        todos.map((i: any) => (i.idinsumo === insumo.idinsumo ? insumo : i)),
+      );
       const uno = this.cache.get<any>(`${prefijo}_${insumo.idinsumo}`);
       if (uno) this.cache.set(`${prefijo}_${insumo.idinsumo}`, insumo);
     }
@@ -158,13 +205,22 @@ export class DetalleTareaService extends BaseOfflineService<DetalleTarea> {
 
   update(id: number, dto: UpdateDetalleTareaDto) {
     return this.updateOffline(id, dto, async () => {
-      const entity = await this.repo.findOneBy(this.where({ iddetalletarea: id }));
-      if (!entity) throw new NotFoundException(`detalle_tarea #${id} no existe en esta finca`);
+      const entity = await this.repo.findOneBy(
+        this.where({ iddetalletarea: id }),
+      );
+      if (!entity)
+        throw new NotFoundException(
+          `detalle_tarea #${id} no existe en esta finca`,
+        );
       await this.validarReferencias(dto);
       Object.assign(entity, {
         ...this.sinFinca(dto),
-        idinsumo: dto.idinsumo ? { idinsumo: dto.idinsumo } as any : entity.idinsumo,
-        idtarea:  dto.idtarea  ? { idtarea:  dto.idtarea }  as any : entity.idtarea,
+        idinsumo: dto.idinsumo
+          ? ({ idinsumo: dto.idinsumo } as any)
+          : entity.idinsumo,
+        idtarea: dto.idtarea
+          ? ({ idtarea: dto.idtarea } as any)
+          : entity.idtarea,
       });
       return this.repo.save(entity);
     });

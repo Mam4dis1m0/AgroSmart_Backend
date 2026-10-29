@@ -17,11 +17,16 @@ describe('EmpleadoCosechaController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [EmpleadoCosechaController],
       providers: [
-        { provide: EmpleadoCosechaService, useValue: mockEmpleadoCosechaService },
+        {
+          provide: EmpleadoCosechaService,
+          useValue: mockEmpleadoCosechaService,
+        },
       ],
     }).compile();
 
-    controller = module.get<EmpleadoCosechaController>(EmpleadoCosechaController);
+    controller = module.get<EmpleadoCosechaController>(
+      EmpleadoCosechaController,
+    );
   });
 
   afterEach(() => {

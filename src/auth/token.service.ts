@@ -7,7 +7,12 @@
 //   JWT_SECRET         (obligatoria, mínimo 32 caracteres)
 //   JWT_EXPIRES_HOURS  (opcional, por defecto 24)
 
-import { Injectable, Logger, OnModuleInit, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { AuthUser, Rol } from './tenant-context';
 
@@ -50,7 +55,10 @@ export class TokenService implements OnModuleInit {
   }
 
   sign(user: AuthUser): string {
-    const horas = Number(process.env.JWT_EXPIRES_HOURS) > 0 ? Number(process.env.JWT_EXPIRES_HOURS) : 24;
+    const horas =
+      Number(process.env.JWT_EXPIRES_HOURS) > 0
+        ? Number(process.env.JWT_EXPIRES_HOURS)
+        : 24;
     const ahora = Math.floor(Date.now() / 1000);
     const payload: JwtPayload = {
       sub: user.idusuario,
@@ -79,18 +87,30 @@ export class TokenService implements OnModuleInit {
     }
 
     // Solo HS256: evita el ataque clásico de alg:none / cambio de algoritmo
-    if (header?.alg !== 'HS256') throw new UnauthorizedException('Token inválido');
+    if (header?.alg !== 'HS256')
+      throw new UnauthorizedException('Token inválido');
 
     const esperada = this.firma(`${h}.${p}`);
     const recibida = Buffer.from(f, 'base64url');
-    if (recibida.length !== esperada.length || !timingSafeEqual(recibida, esperada)) {
+    if (
+      recibida.length !== esperada.length ||
+      !timingSafeEqual(recibida, esperada)
+    ) {
       throw new UnauthorizedException('Token inválido');
     }
 
-    if (typeof payload.exp !== 'number' || payload.exp < Math.floor(Date.now() / 1000)) {
-      throw new UnauthorizedException('La sesión expiró. Inicia sesión de nuevo.');
+    if (
+      typeof payload.exp !== 'number' ||
+      payload.exp < Math.floor(Date.now() / 1000)
+    ) {
+      throw new UnauthorizedException(
+        'La sesión expiró. Inicia sesión de nuevo.',
+      );
     }
-    if (!Number.isInteger(payload.sub) || !ROLES_VALIDOS.includes(payload.rol)) {
+    if (
+      !Number.isInteger(payload.sub) ||
+      !ROLES_VALIDOS.includes(payload.rol)
+    ) {
       throw new UnauthorizedException('Token inválido');
     }
 

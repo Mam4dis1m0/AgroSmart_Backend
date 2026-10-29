@@ -4,20 +4,20 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { Usuario }         from '../Entidades/entities/Usuario';
-import { Administrador }   from '../Entidades/entities/Administrador';
-import { Empleado }        from '../Entidades/entities/Empleado';
-import { Lote }            from '../Entidades/entities/Lote';
-import { Palma }           from '../Entidades/entities/Palma';
-import { Cultivo }         from '../Entidades/entities/Cultivo';
+import { Usuario } from '../Entidades/entities/Usuario';
+import { Administrador } from '../Entidades/entities/Administrador';
+import { Empleado } from '../Entidades/entities/Empleado';
+import { Lote } from '../Entidades/entities/Lote';
+import { Palma } from '../Entidades/entities/Palma';
+import { Cultivo } from '../Entidades/entities/Cultivo';
 import { ProduccionPalma } from '../Entidades/entities/ProduccionPalma';
-import { Insumo }          from '../Entidades/entities/Insumo';
-import { Tarea }           from '../Entidades/entities/Tarea';
-import { DetalleTarea }    from '../Entidades/entities/DetalleTarea';
+import { Insumo } from '../Entidades/entities/Insumo';
+import { Tarea } from '../Entidades/entities/Tarea';
+import { DetalleTarea } from '../Entidades/entities/DetalleTarea';
 import { AsignacionTarea } from '../Entidades/entities/AsignacionTarea';
 import { EmpleadoCosecha } from '../Entidades/entities/EmpleadoCosecha';
-import { Notificacion }    from '../Entidades/entities/Notificacion';
-import { Auditoria }       from '../Entidades/entities/Auditoria';
+import { Notificacion } from '../Entidades/entities/Notificacion';
+import { Auditoria } from '../Entidades/entities/Auditoria';
 import { Plan } from '../Entidades/entities/Plan';
 import { Finca } from '../Entidades/entities/Finca';
 import { FincaUsuario } from '../Entidades/entities/FincaUsuario';
@@ -48,17 +48,47 @@ import { TareaEvidencia } from '../Entidades/entities/TareaEvidencia';
 const logger = new Logger('DatabaseModule');
 
 export const ALL_ENTITIES = [
-  Usuario, Administrador, Empleado, Lote, Palma, Cultivo,
-  ProduccionPalma, Insumo, Tarea, DetalleTarea, AsignacionTarea,
-  EmpleadoCosecha, Notificacion, Auditoria,
+  Usuario,
+  Administrador,
+  Empleado,
+  Lote,
+  Palma,
+  Cultivo,
+  ProduccionPalma,
+  Insumo,
+  Tarea,
+  DetalleTarea,
+  AsignacionTarea,
+  EmpleadoCosecha,
+  Notificacion,
+  Auditoria,
   // ── Multi-tenant, planes SaaS y capa de negocio (documento 1.5) ──
-  Plan, Finca, FincaUsuario, Suscripcion, Pago,
-  CompradorPerfil, Cosecha, CompraInsumo,
-  Listado, ListadoFoto, OrdenCompra, CarritoItem, WishlistItem,
-  Anunciante, Anuncio, AnuncioImpresion,
-  Nomina, NominaDetalle, PerfilTalento, SolicitudContratacion,
-  ChatConversacion, ChatMensaje, MensajeInterno,
-  PlantillaLabor, PlantillaLaborInsumo, TareaEvidencia,
+  Plan,
+  Finca,
+  FincaUsuario,
+  Suscripcion,
+  Pago,
+  CompradorPerfil,
+  Cosecha,
+  CompraInsumo,
+  Listado,
+  ListadoFoto,
+  OrdenCompra,
+  CarritoItem,
+  WishlistItem,
+  Anunciante,
+  Anuncio,
+  AnuncioImpresion,
+  Nomina,
+  NominaDetalle,
+  PerfilTalento,
+  SolicitudContratacion,
+  ChatConversacion,
+  ChatMensaje,
+  MensajeInterno,
+  PlantillaLabor,
+  PlantillaLaborInsumo,
+  TareaEvidencia,
 ];
 
 const DataSourceProvider = {
@@ -118,13 +148,27 @@ function offlineRepo(entity: any) {
     countBy: () => Promise.resolve(0),
     query: noopArray,
     createQueryBuilder: () => ({
-      leftJoinAndSelect: function() { return this; },
-      leftJoin: function() { return this; },
-      where: function() { return this; },
-      andWhere: function() { return this; },
-      orWhere: function() { return this; },
-      select: function() { return this; },
-      orderBy: function() { return this; },
+      leftJoinAndSelect: function () {
+        return this;
+      },
+      leftJoin: function () {
+        return this;
+      },
+      where: function () {
+        return this;
+      },
+      andWhere: function () {
+        return this;
+      },
+      orWhere: function () {
+        return this;
+      },
+      select: function () {
+        return this;
+      },
+      orderBy: function () {
+        return this;
+      },
       getMany: noopArray,
       getOne: noop,
       getRawMany: noopArray,
@@ -148,6 +192,6 @@ const REPO_PROVIDERS = ALL_ENTITIES.map(makeRepoProvider);
 @Module({
   imports: [ConfigModule],
   providers: [DataSourceProvider, ...REPO_PROVIDERS],
-  exports: [DataSource, ...REPO_PROVIDERS.map(p => p.provide)],
+  exports: [DataSource, ...REPO_PROVIDERS.map((p) => p.provide)],
 })
 export class DatabaseModule {}
