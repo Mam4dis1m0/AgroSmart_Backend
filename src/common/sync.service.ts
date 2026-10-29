@@ -163,7 +163,14 @@ export class SyncService implements OnModuleInit {
     }
 
     // Si estábamos online, no bloqueamos la petición: se actualiza en segundo plano.
-    this.checkConnection().then((online) => this.aplicarEstado(online));
+    // `void` + `.catch`: es una tarea en segundo plano; si el chequeo falla no debe tumbar el proceso.
+    void this.checkConnection()
+      .then((online) => this.aplicarEstado(online))
+      .catch((err) =>
+        this.logger.warn(
+          `No se pudo verificar la conexión: ${err?.message ?? err}`,
+        ),
+      );
     return this._online;
   }
 
