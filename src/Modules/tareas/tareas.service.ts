@@ -118,6 +118,13 @@ export class TareasService {
     if (!r.length) throw new NotFoundException(`Empleado #${idempleado} no pertenece a esta finca.`);
   }
 
+  /** Una tarea de cosecha necesita cultivo: sin él, lo recolectado no tiene a qué cosecha pertenecer. */
+  private exigirCultivoSiEsCosecha(actividad?: string | null, idcultivo?: number | null) {
+    if (actividad && /cosecha/i.test(actividad) && !idcultivo) {
+      throw new BadRequestException('Una tarea de cosecha necesita un cultivo: elige a cuál pertenece lo que se recolecte');
+    }
+  }
+
   /** CU-07 / RNF-05: el cultivo debe ser de la finca, estar activo y la fecha no puede ser previa a la siembra. */
   private async validarCultivo(idcultivo?: number | null, fechaprogramada?: string | null): Promise<void> {
     if (!idcultivo) return;
@@ -193,6 +200,8 @@ export class TareasService {
       idadmincreador: TenantContext.requireUser().idusuario,
     };
 
+    this.exigirCultivoSiEsCosecha(dto.tipoactividad, dto.idcultivo);
+
     if (online) {
       await this.validarCultivo(dto.idcultivo, dto.fechaprogramada);
       const entity = this.repo.create({
@@ -258,6 +267,11 @@ export class TareasService {
         if (entity.estado === 'Completado' && cambios.estado !== 'Completado') {
           throw new BadRequestException('La tarea ya está completada');
         }
+      }
+
+      if (cambios.tipoactividad !== undefined && /cosecha/i.test(String(cambios.tipoactividad)) && !cambios.idcultivo) {
+        const [actual] = await this.repo.manager.query(`SELECT idcultivo FROM tarea WHERE idtarea = $1 AND idfinca = $2`, [id, idfinca]);
+        this.exigirCultivoSiEsCosecha(String(cambios.tipoactividad), actual?.idcultivo);
       }
 
       if (cambios.idcultivo !== undefined || cambios.fechaprogramada !== undefined) {
@@ -621,6 +635,14 @@ export class TareasService {
   async completar(idAsignacion: number, at?: string | null, cosecha?: DatosCosecha | null): Promise<AsignacionTarea> {
     const datosCosecha = this.validarCosecha(cosecha);
     const asignacion = await this.asignacionPropia(idAsignacion);
+    if (datosCosecha && asignacion.idtarea) {
+      const [t] = await this.repo.manager.query(
+        `SELECT idcultivo FROM tarea WHERE idtarea = $1 AND idfinca = $2`, [asignacion.idtarea.idtarea, this.idfinca],
+      );
+      if (!t?.idcultivo) {
+        throw new BadRequestException('Esta tarea no tiene cultivo: edítala y elígelo para poder registrar lo recolectado');
+      }
+    }
     const fin = this.instante(at);
 
     // Actualizar asignación; si hubo cronómetro, las horas salen solas (la edición manual manda)
