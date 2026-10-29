@@ -105,17 +105,23 @@ const DataSourceProvider = {
       connectTimeoutMS: 5000,
     });
 
+    let startupTimeout: NodeJS.Timeout | undefined;
     try {
       await Promise.race([
         ds.initialize(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout 5s')), 5000),
-        ),
+        new Promise<never>((_, reject) => {
+          startupTimeout = setTimeout(
+            () => reject(new Error('Timeout 5s')),
+            5000,
+          );
+        }),
       ]);
       logger.log('✅ Conectado a Supabase — modo online');
     } catch (err) {
       logger.warn('📴 Sin conexión a Supabase — modo offline activado');
       logger.warn(`   Razón: ${err.message}`);
+    } finally {
+      if (startupTimeout) clearTimeout(startupTimeout);
     }
 
     return ds;
