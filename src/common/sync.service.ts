@@ -448,7 +448,7 @@ export class SyncService implements OnModuleInit {
   }
 
   private async syncRegistroUsuario(data: any) {
-    const { userData, role, montoporhora, montoporjornal, montomensual, idfinca, ubicacion, latitud, longitud } = data;
+    const { userData, role, montoporhora, montoporjornal, montomensual, tipopago, valorpago, idfinca, ubicacion, latitud, longitud } = data;
 
     const cleanUser = Object.fromEntries(
       Object.entries(userData as Record<string, unknown>).filter(([k, v]) => {
@@ -491,10 +491,10 @@ export class SyncService implements OnModuleInit {
       );
     } else {
       await this.dataSource.query(
-        `INSERT INTO empleado (idusuario, montoporhora, montoporjornal)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (idusuario) DO UPDATE SET montoporhora = $2, montoporjornal = $3`,
-        [idusuario, montoporhora ?? 0, montoporjornal ?? 0],
+        `INSERT INTO empleado (idusuario, montoporhora, montoporjornal, tipopago, valorpago)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (idusuario) DO UPDATE SET montoporhora = $2, montoporjornal = $3, tipopago = $4, valorpago = $5`,
+        [idusuario, montoporhora ?? 0, montoporjornal ?? 0, tipopago ?? 'dia', valorpago ?? 0],
       );
       // El empleado nace dentro de la finca del administrador que lo registró
       if (idfinca) {

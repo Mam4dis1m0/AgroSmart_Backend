@@ -2,7 +2,8 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { DataSource } from 'typeorm';
 import { filas } from '../../common/sql';
 import { AuthUser } from '../../auth/tenant-context';
-import { COSTO_TAREA_SQL, DesgloseCosto, totalCosto } from './costos';
+import { COSTO_TAREA_SQL, FilaCosto, armarCosto } from './costos';
+import { costoHoraDeFinca } from './mano-obra';
 
 export interface InsumoSugerido {
   /** Insumo propuesto (null si la finca no tiene ninguno de ese tipo). */
@@ -14,16 +15,10 @@ export interface InsumoSugerido {
   stockactual: number | null;
   origen: 'plantilla' | 'historial';
   tipoinsumo: string | null;
+  /** Hectáreas del lote del cultivo con las que se escaló la cantidad (null = sin área registrada, no se escala). */
+  hectareas: number | null;
   /** Otros insumos de la finca del mismo tipo, por si el empleado prefiere otro. */
   candidatos: { idinsumo: number; nombre: string; unidadmedida: string | null; stockactual: number }[];
-}
-
-export interface PagoSugerido {
-  modalidad: 'tiempo' | 'fijo';
-  sugerido: number | null;
-  base: 'tarifa' | 'historico' | null;
-  detalle: string | null;
-  muestras: number;
 }
 
 const redondear = (n: number) => Math.round(n * 100) / 100;
@@ -38,10 +33,14 @@ export class TareaSugerenciasService {
 
   /** La tarea debe ser de la finca y, si quien consulta es empleado, estarle asignada. */
   private async acceso(idfinca: number, idtarea: number, user: AuthUser) {
-    const [t] = filas<{ tipoactividad: string | null; idplantilla: number | null; horasestimadas: number | null; costototal: number | null }>(
+    const [t] = filas<{ tipoactividad: string | null; idplantilla: number | null; horasestimadas: number | null; costototal: number | null; hectareas: number | null }>(
       await this.ds.query(
-        `SELECT tipoactividad, idplantilla, horasestimadas::float8 AS horasestimadas, costototal::float8 AS costototal
-           FROM tarea WHERE idtarea = $1 AND idfinca = $2`,
+        `SELECT t.tipoactividad, t.idplantilla, t.horasestimadas::float8 AS horasestimadas, t.costototal::float8 AS costototal,
+                NULLIF(l.areahectareas, 0)::float8 AS hectareas
+           FROM tarea t
+           LEFT JOIN cultivo c ON c.idcultivo = t.idcultivo
+           LEFT JOIN lote l    ON l.idlote = c.idlote
+          WHERE t.idtarea = $1 AND t.idfinca = $2`,
         [idtarea, idfinca],
       ),
     );
@@ -67,12 +66,16 @@ export class TareaSugerenciasService {
     );
 
     // Lo que se gastó en esta labor las veces anteriores: promedio y frecuencia por insumo
-    const historial = filas<{ idinsumo: number; nombre: string; unidadmedida: string | null; stockactual: number; cantidad: number }>(
+    // Lo gastado antes se lleva a «por hectárea» para poder aplicarlo a lotes de otro tamaño
+    const historial = filas<{ idinsumo: number; nombre: string; unidadmedida: string | null; stockactual: number; cantidad: number; porhectarea: number | null }>(
       await this.ds.query(
         `SELECT d.idinsumo, i.nombre, i.unidadmedida, i.stockactual::float8 AS stockactual,
-                AVG(d.cantidadusada)::float8 AS cantidad
+                AVG(d.cantidadusada)::float8 AS cantidad,
+                AVG(d.cantidadusada / NULLIF(l.areahectareas, 0))::float8 AS porhectarea
            FROM detalle_tarea d
            JOIN tarea x  ON x.idtarea = d.idtarea AND x.idfinca = d.idfinca
+           LEFT JOIN cultivo c ON c.idcultivo = x.idcultivo
+           LEFT JOIN lote l    ON l.idlote = c.idlote
            JOIN insumo i ON i.idinsumo = d.idinsumo
           WHERE d.idfinca = $1 AND lower(x.tipoactividad) = lower($2) AND x.idtarea <> $3
           GROUP BY d.idinsumo, i.nombre, i.unidadmedida, i.stockactual
@@ -80,7 +83,11 @@ export class TareaSugerenciasService {
         [idfinca, actividad, idtarea],
       ),
     );
-    const promedio = new Map(historial.map((h) => [h.idinsumo, h.cantidad]));
+    const ha = t.hectareas;
+    /** Cantidad histórica para este lote: por hectárea × hectáreas; si no hay área en alguno, el promedio simple. */
+    const delHistorial = (h: { cantidad: number; porhectarea: number | null }) =>
+      ha && h.porhectarea ? redondear(h.porhectarea * ha) : redondear(h.cantidad);
+    const promedio = new Map(historial.map((h) => [h.idinsumo, delHistorial(h)]));
 
     const salida: InsumoSugerido[] = [];
     const vistos = new Set<number>();
@@ -124,7 +131,9 @@ export class TareaSugerenciasService {
           idinsumo: elegido?.idinsumo ?? null,
           nombre: elegido?.nombre ?? p.tipoinsumo ?? 'Insumo',
           unidad: elegido?.unidadmedida ?? p.unidad,
-          cantidad: p.cantidadsugerida ?? (elegido ? promedio.get(elegido.idinsumo) ?? null : null),
+          // La cantidad de la plantilla es por hectárea
+          cantidad: p.cantidadsugerida !== null ? redondear(p.cantidadsugerida * (ha ?? 1)) : elegido ? promedio.get(elegido.idinsumo) ?? null : null,
+          hectareas: ha,
           stockactual: elegido?.stockactual ?? null,
           origen: 'plantilla',
           tipoinsumo: p.tipoinsumo,
@@ -141,7 +150,8 @@ export class TareaSugerenciasService {
         idinsumo: h.idinsumo,
         nombre: h.nombre,
         unidad: h.unidadmedida,
-        cantidad: redondear(h.cantidad),
+        cantidad: delHistorial(h),
+        hectareas: ha,
         stockactual: h.stockactual,
         origen: 'historial',
         tipoinsumo: null,
@@ -151,75 +161,20 @@ export class TareaSugerenciasService {
     return salida;
   }
 
-  /**
-   * Pago que se propone al asignar. Labores por tiempo: horas estimadas × tarifa del empleado.
-   * Labores a destajo (cosecha): promedio de lo pagado antes por esa misma labor.
-   */
-  async pagoSugerido(idfinca: number, idtarea: number, idempleado: number, user: AuthUser): Promise<PagoSugerido> {
-    const t = await this.acceso(idfinca, idtarea, user);
-
-    const [p] = filas<{ modalidad: string }>(
-      await this.ds.query(
-        `SELECT COALESCE(p.modalidadpago, 'tiempo') AS modalidad
-           FROM tarea t LEFT JOIN plantilla_labor p ON p.idplantilla = t.idplantilla
-          WHERE t.idtarea = $1 AND t.idfinca = $2`,
-        [idtarea, idfinca],
-      ),
-    );
-    const modalidad = p?.modalidad === 'fijo' ? 'fijo' : 'tiempo';
-
-    const porTarifa = async (): Promise<PagoSugerido | null> => {
-      const [e] = filas<{ hora: number; jornal: number }>(
-        await this.ds.query(
-          `SELECT COALESCE(montoporhora, 0)::float8 AS hora, COALESCE(montoporjornal, 0)::float8 AS jornal FROM empleado WHERE idusuario = $1`,
-          [idempleado],
-        ),
-      );
-      const tarifa = e?.hora > 0 ? e.hora : e?.jornal > 0 ? e.jornal / 8 : 0;
-      const horas = t.horasestimadas ?? 0;
-      if (!(tarifa > 0 && horas > 0)) return null;
-      return {
-        modalidad,
-        sugerido: Math.round(tarifa * horas),
-        base: 'tarifa',
-        detalle: `${horas} h × $${Math.round(tarifa).toLocaleString('es-CO')}/h`,
-        muestras: 0,
-      };
-    };
-
-    if (modalidad === 'fijo') {
-      const [h] = filas<{ promedio: number | null; muestras: number }>(
-        await this.ds.query(
-          `SELECT AVG(a.pagoacordado)::float8 AS promedio, count(*)::int AS muestras
-             FROM asignacion_tarea a JOIN tarea x ON x.idtarea = a.idtarea
-            WHERE a.idfinca = $1 AND a.estado = 'Completado' AND COALESCE(a.pagoacordado, 0) > 0
-              AND lower(x.tipoactividad) = lower($2) AND x.idtarea <> $3
-              AND x.fechaprogramada >= current_date - 365`,
-          [idfinca, t.tipoactividad ?? '', idtarea],
-        ),
-      );
-      if (h?.promedio) {
-        return {
-          modalidad,
-          sugerido: Math.round(h.promedio),
-          base: 'historico',
-          detalle: `Promedio de ${h.muestras} ${h.muestras === 1 ? 'vez' : 'veces'} anteriores`,
-          muestras: h.muestras,
-        };
-      }
-    }
-    return (await porTarifa()) ?? { modalidad, sugerido: null, base: null, detalle: null, muestras: 0 };
-  }
-
   async costos(idfinca: number, idtarea: number, user: AuthUser) {
     const t = await this.acceso(idfinca, idtarea, user);
-    const [d] = filas<DesgloseCosto>(await this.ds.query(COSTO_TAREA_SQL, [idtarea, idfinca]));
+    const consulta = (q: string, par?: any[]) => this.ds.query(q, par);
+    const [fila] = filas<FilaCosto>(await consulta(COSTO_TAREA_SQL, [idtarea, idfinca]));
+    const c = armarCosto(fila, await costoHoraDeFinca(consulta, idfinca));
     return {
       estimado: t.costototal ?? 0,
-      insumos: d?.insumos ?? 0,
-      manoObra: d?.mano ?? 0,
-      transporte: d?.transporte ?? 0,
-      total: totalCosto(d),
+      insumos: c.insumos,
+      manoObra: c.mano,
+      horas: c.horas,
+      personas: c.personas,
+      costoHora: c.costoHora,
+      transporte: c.transporte,
+      total: c.total,
     };
   }
 

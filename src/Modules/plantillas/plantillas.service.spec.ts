@@ -45,15 +45,17 @@ describe('PlantillasService.vistaPrevia', () => {
 
   afterEach(() => { jest.resetAllMocks(); });
 
-  /** Respuestas de las 3 consultas SQL: tarifa promedio, costo de insumos y plantillas ya creadas. */
-  const sql = (tarifa: number, yaCreadas: any[] = []) =>
+  /** Respuestas de las consultas SQL: jornada y pago de los empleados, hectáreas, costo de insumos y plantillas ya creadas. */
+  const sql = (pagoDia: number, yaCreadas: any[] = [], hectareas: number | null = null) =>
     query.mockImplementation(async (texto: string) => {
-      if (texto.includes('AVG(')) return [{ tarifa }];
+      if (texto.includes('FROM finca WHERE')) return [{ inicio: '07:00:00', fin: '16:00:00', descanso: 60, personas: null }];
+      if (texto.includes('FROM empleado e')) return pagoDia > 0 ? [{ tipopago: 'dia', valorpago: pagoDia }] : [];
+      if (texto.includes('LEFT JOIN lote')) return [{ ha: hectareas }];
       if (texto.includes('plantilla_labor_insumo')) return [];
       return yaCreadas;
     });
 
-  it('programa las labores desde la siembra y estima el costo con la tarifa del equipo', async () => {
+  it('programa las labores desde la siembra y estima la mano de obra con el costo por hora de la finca', async () => {
     const siembra = sumarDias(hoy(), 10);
     cultivoRepo.findOneBy.mockResolvedValue({ idcultivo: 3, tipo: 'Maíz', categoria: null, fechasiembra: siembra, fechacosechaestimada: null });
     plantillaRepo.find
@@ -62,7 +64,7 @@ describe('PlantillasService.vistaPrevia', () => {
         base({ idplantilla: 1, actividad: 'Preparación del suelo', diasoffset: -7, horasestimadas: 8, numpersonas: 2 }),
         base({ idplantilla: 2, actividad: 'Cosecha', base: 'cosecha_estimada' }),
       ]);
-    sql(5000);
+    sql(40000); // un empleado a 40.000 por día ÷ 8 h = 5.000 por hora
 
     const r = await conSesion(sesionAdmin, () => service.vistaPrevia(3));
 
@@ -70,7 +72,7 @@ describe('PlantillasService.vistaPrevia', () => {
     expect(r.desdeBase).toBe(true);
     const prep = r.items.find((i) => i.actividad === 'Preparación del suelo')!;
     expect(prep.fecha).toBe(sumarDias(siembra, -7));
-    expect(prep.costoestimado).toBe(80000); // 8 h × 2 personas × 5.000
+    expect(prep.costoestimado).toBe(80000); // 8 h × 2 personas × 5.000 por hora
     expect(prep.pasada).toBe(false);
     expect(prep.omitida).toBeNull();
     // Sin fecha de cosecha estimada no se puede programar la cosecha
@@ -90,6 +92,32 @@ describe('PlantillasService.vistaPrevia', () => {
     expect(r.desdeBase).toBe(false);
     expect(r.items[0].pasada).toBe(true);
     expect(r.items[0].yaCreada).toBe(true);
+  });
+
+  it('escala las horas y el costo por las hectáreas del lote', async () => {
+    cultivoRepo.findOneBy.mockResolvedValue({ idcultivo: 3, tipo: 'Maíz', categoria: null, fechasiembra: sumarDias(hoy(), 10), fechacosechaestimada: null });
+    plantillaRepo.find
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([base({ idplantilla: 1, actividad: 'Fertilización', diasoffset: 0, horasestimadas: 4, numpersonas: 1 })]);
+    sql(40000, [], 2.5);
+
+    const r = await conSesion(sesionAdmin, () => service.vistaPrevia(3));
+
+    expect(r.hectareas).toBe(2.5);
+    expect(r.items[0]).toMatchObject({ horasPorHectarea: 4, horasestimadas: 10, costoestimado: 50000 }); // 4 h × 2,5 ha × 5.000
+  });
+
+  it('en un cultivo establecido las labores repetitivas se programan desde la próxima repetición, no en el pasado', async () => {
+    cultivoRepo.findOneBy.mockResolvedValue({ idcultivo: 4, tipo: 'Palma', categoria: null, fechasiembra: '2019-03-15', fechacosechaestimada: null });
+    plantillaRepo.find
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([base({ idplantilla: 9, categoria: 'palma', actividad: 'Fertilización', base: 'inicio', diasoffset: 15, esrecurrente: true, frecuenciadias: 120, diasfin: 365 })]);
+    sql(0);
+
+    const r = await conSesion(sesionAdmin, () => service.vistaPrevia(4));
+
+    expect(r.items[0].fecha).toBe(sumarDias(hoy(), 15));
+    expect(r.items[0].pasada).toBe(false);
   });
 
   it('pide elegir categoría cuando el tipo de cultivo no se reconoce', async () => {

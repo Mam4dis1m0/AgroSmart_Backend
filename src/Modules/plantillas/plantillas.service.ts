@@ -8,7 +8,8 @@ import { Tarea } from '../../Entidades/entities/Tarea';
 import { TenantContext } from '../../auth/tenant-context';
 import { filas } from '../../common/sql';
 import { CATEGORIAS, categoriaDeTipo, esCategoria } from './categorias';
-import { fechaBase, hoy, sumarDias } from './fechas';
+import { hoy, primeraFecha } from './fechas';
+import { costoHoraDeFinca } from '../tareas/mano-obra';
 import { CreatePlantillaDto, UpdatePlantillaDto } from '../../dto/plantilla.dto';
 import { AsignacionSugeridaService } from '../tareas/asignacion-sugerida.service';
 
@@ -25,6 +26,12 @@ export interface ItemPlan {
   modalidadpago: string;
   costoestimado: number;
   insumos: { tipoinsumo: string | null; unidad: string | null }[];
+  /** Hectáreas del lote del cultivo; las horas y cantidades de la plantilla (por hectárea) se multiplican por ellas. */
+  hectareas: number | null;
+  /** Horas de la plantilla para 1 hectárea, antes de escalar. */
+  horasPorHectarea: number | null;
+  /** La fecha original ya había pasado y se corrió a la próxima repetición (cultivo ya establecido). */
+  ajustada: boolean;
   /** La fecha ya pasó (cultivo sembrado antes): se muestra pero no se marca por defecto. */
   pasada: boolean;
   /** Ya existe una tarea de esta plantilla para este cultivo. */
@@ -167,18 +174,17 @@ export class PlantillasService {
     return cat;
   }
 
-  /** Tarifa por hora promedio del equipo (para estimar el costo de mano de obra). */
-  private async tarifaHora(): Promise<number> {
-    const [r] = filas<{ tarifa: number }>(
+  /** Hectáreas del lote del cultivo (null si no tiene lote o el lote no tiene área registrada). */
+  private async hectareasDe(idcultivo: number): Promise<number | null> {
+    const [r] = filas<{ ha: number | null }>(
       await this.repo.manager.query(
-        `SELECT COALESCE(AVG(NULLIF(e.montoporhora, 0)), AVG(NULLIF(e.montoporjornal, 0)) / 8, 0)::float8 AS tarifa
-           FROM empleado e
-           JOIN finca_usuario fu ON fu.idusuario = e.idusuario
-          WHERE fu.idfinca = $1 AND fu.rol = 'empleado' AND fu.activo = true`,
-        [this.idfinca],
+        `SELECT l.areahectareas::float8 AS ha
+           FROM cultivo c LEFT JOIN lote l ON l.idlote = c.idlote
+          WHERE c.idcultivo = $1 AND c.idfinca = $2`,
+        [idcultivo, this.idfinca],
       ),
     );
-    return r?.tarifa ?? 0;
+    return r?.ha && r.ha > 0 ? r.ha : null;
   }
 
   /** Costo de los insumos concretos de la plantilla (los que son solo un tipo no se pueden valorar aún). */
@@ -197,8 +203,19 @@ export class PlantillasService {
     return new Map(rows.map((r) => [r.idplantilla, r.costo]));
   }
 
+  /**
+   * Horas y costo de una labor para ESTE cultivo. Las plantillas están expresadas para 1 hectárea:
+   * se multiplican por las hectáreas del lote. Mano de obra = horas × personas × costo por hora de la finca.
+   */
+  private estimar(p: PlantillaLabor, ha: number | null, costoHora: number, costoInsumo1ha: number) {
+    const factor = ha ?? 1;
+    const horas = p.horasestimadas === null ? null : Math.round(p.horasestimadas * factor * 100) / 100;
+    const costo = Math.round(((horas ?? 0) * p.numpersonas * costoHora + costoInsumo1ha * factor) * 100) / 100;
+    return { horas, costo };
+  }
+
   /** Vista previa: qué tareas se crearían, sin crear nada. */
-  async vistaPrevia(idcultivo: number): Promise<{ categoria: string; desdeBase: boolean; items: ItemPlan[] }> {
+  async vistaPrevia(idcultivo: number): Promise<{ categoria: string; desdeBase: boolean; hectareas: number | null; items: ItemPlan[] }> {
     const cultivo = await this.cultivoDeFinca(idcultivo);
     const categoria = this.categoriaDe(cultivo);
 
@@ -209,38 +226,45 @@ export class PlantillasService {
     plantillas.sort((a, b) => a.diasoffset - b.diasoffset || a.idplantilla - b.idplantilla);
 
     const ids = plantillas.map((p) => p.idplantilla);
-    const [conInsumos, tarifa, costos, existentes] = await Promise.all([
+    const [conInsumos, costoHora, costos, existentes, ha] = await Promise.all([
       this.conInsumos(plantillas),
-      this.tarifaHora(),
+      costoHoraDeFinca((q, par) => this.repo.manager.query(q, par), this.idfinca),
       this.costoInsumos(ids),
       this.plantillasYaCreadas(idcultivo),
+      this.hectareasDe(idcultivo),
     ]);
 
     const hoyISO = hoy();
     const items: ItemPlan[] = conInsumos.map((p) => {
-      const base = fechaBase(p.base, cultivo);
-      const fecha = base ? sumarDias(base, p.diasoffset) : null;
-      const horas = p.horasestimadas ?? 0;
+      const f = primeraFecha(p, cultivo, hoyISO);
+      const { horas, costo } = this.estimar(p, ha, costoHora, costos.get(p.idplantilla) ?? 0);
       const ref = desdeBase ? p.idplantilla : p.idplantillabase ?? p.idplantilla;
       return {
         idplantilla: p.idplantilla,
         actividad: p.actividad,
         etapa: p.etapa,
-        fecha,
-        horasestimadas: p.horasestimadas,
+        fecha: f.fecha,
+        horasestimadas: horas,
+        horasPorHectarea: p.horasestimadas,
+        hectareas: ha,
         numpersonas: p.numpersonas,
         prioridad: p.prioridad,
         esrecurrente: p.esrecurrente,
         frecuenciadias: p.frecuenciadias,
         modalidadpago: p.modalidadpago,
-        costoestimado: Math.round((horas * p.numpersonas * tarifa + (costos.get(p.idplantilla) ?? 0)) * 100) / 100,
+        costoestimado: costo,
         insumos: p.insumos.map((i) => ({ tipoinsumo: i.tipoinsumo, unidad: i.unidad })),
-        pasada: !!fecha && fecha < hoyISO,
+        pasada: f.pasada,
+        ajustada: f.ajustada,
         yaCreada: existentes.has(p.idplantilla) || existentes.has(ref),
-        omitida: fecha ? null : `El cultivo no tiene fecha de ${p.base === 'cosecha_estimada' ? 'cosecha estimada' : 'siembra'}`,
+        omitida: f.terminada
+          ? 'Esta labor ya cumplió su ciclo'
+          : f.fecha
+            ? null
+            : `El cultivo no tiene fecha de ${p.base === 'cosecha_estimada' ? 'cosecha estimada' : 'siembra'}`,
       };
     });
-    return { categoria, desdeBase, items };
+    return { categoria, desdeBase, hectareas: ha, items };
   }
 
   /** Plantillas (de la finca o su base) de las que este cultivo ya tiene tareas. */
@@ -267,50 +291,52 @@ export class PlantillasService {
     const categoria = this.categoriaDe(cultivo);
     const idfinca = this.idfinca;
     const admin = TenantContext.requireUser().idusuario;
+    const hoyISO = hoy();
+
+    const [costoHora, ha] = await Promise.all([
+      costoHoraDeFinca((q, par) => this.repo.manager.query(q, par), idfinca),
+      this.hectareasDe(idcultivo),
+    ]);
 
     const resultado = await this.repo.manager.transaction(async (m) => {
       await this.copiarBase(m, categoria); // la finca pasa a trabajar con su copia
       const propias = await m.find(PlantillaLabor, { where: { idfinca, categoria, activa: true } });
-      const preview = await this.vistaPrevia(idcultivo);
-      const elegibles = new Set(
-        ids?.length
-          ? ids
-          : preview.items.filter((i) => !i.omitida && !i.pasada && !i.yaCreada).map((i) => i.idplantilla),
-      );
+      const elegidasPorElCliente = ids?.length ? new Set(ids) : null;
 
-      const tarifa = await this.tarifaHora();
       const costos = await this.costoInsumos(propias.map((p) => p.idplantilla));
       const hechas = await this.plantillasYaCreadas(idcultivo);
       const creadas: Tarea[] = [];
       let omitidas = 0;
 
       for (const p of propias) {
-        // El cliente pudo elegir la plantilla base o la copia de la finca
-        const elegida = elegibles.has(p.idplantilla) || (p.idplantillabase !== null && elegibles.has(p.idplantillabase));
-        if (!elegida) continue;
-        if (hechas.has(p.idplantilla) || (p.idplantillabase !== null && hechas.has(p.idplantillabase))) { omitidas++; continue; }
         if (p.tipocultivo && p.tipocultivo.toLowerCase() !== (cultivo.tipo ?? '').toLowerCase()) continue;
+        const yaExiste = hechas.has(p.idplantilla) || (p.idplantillabase !== null && hechas.has(p.idplantillabase));
+        const f = primeraFecha(p, cultivo, hoyISO);
 
-        const base = fechaBase(p.base, cultivo);
-        if (!base) { omitidas++; continue; }
-        const horas = p.horasestimadas ?? 0;
+        // El cliente pudo elegir la plantilla base o la copia de la finca
+        const elegida = elegidasPorElCliente
+          ? elegidasPorElCliente.has(p.idplantilla) || (p.idplantillabase !== null && elegidasPorElCliente.has(p.idplantillabase))
+          : !f.pasada;
+        if (!elegida) continue;
+        if (yaExiste || !f.fecha) { omitidas++; continue; }
 
+        const { horas, costo } = this.estimar(p, ha, costoHora, costos.get(p.idplantilla) ?? 0);
         creadas.push(
           await m.save(
             Tarea,
             m.create(Tarea, {
               idfinca,
               tipoactividad: p.actividad,
-              fechaprogramada: sumarDias(base, p.diasoffset),
+              fechaprogramada: f.fecha,
               estado: 'Pendiente',
               esrecurrente: p.esrecurrente ? 'Sí' : 'No',
               frecuenciadias: p.esrecurrente ? p.frecuenciadias : null,
               prioridad: p.prioridad,
-              horasestimadas: p.horasestimadas,
+              horasestimadas: horas,
               etapa: p.etapa,
               idplantilla: p.idplantilla,
               generadaauto: true,
-              costototal: Math.round((horas * p.numpersonas * tarifa + (costos.get(p.idplantilla) ?? 0)) * 100) / 100,
+              costototal: costo,
               idcultivo: { idcultivo } as any,
               idadmincreador: { idusuario: admin } as any,
             }),

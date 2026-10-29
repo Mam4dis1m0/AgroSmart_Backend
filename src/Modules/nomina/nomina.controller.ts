@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { CurrentUser, RequiereFuncion, Roles } from '../../auth/auth.decorators';
 import { AuthUser, TenantContext } from '../../auth/tenant-context';
-import { AjustarDeduccionesDto, CreateNominaDto } from '../../dto/nomina.dto';
+import { AjustarDeduccionesDto, AjustarUnidadesDto, CreateNominaDto } from '../../dto/nomina.dto';
 import { NominaService } from './nomina.service';
 
 // Nómina y control de pagos: función Premium (RF-37). El PlanGuard devuelve 403 PLAN_PREMIUM_REQUERIDO.
@@ -41,6 +41,11 @@ export class NominaController {
   @Patch('detalle/:iddetalle/deducciones')
   ajustar(@Param('iddetalle', ParseIntPipe) iddetalle: number, @Body() dto: AjustarDeduccionesDto) {
     return this.service.ajustarDeducciones(iddetalle, dto.deducciones, TenantContext.requireFinca());
+  }
+
+  @Patch('detalle/:iddetalle/unidades')
+  ajustarUnidades(@Param('iddetalle', ParseIntPipe) iddetalle: number, @Body() dto: AjustarUnidadesDto) {
+    return this.service.ajustarUnidades(iddetalle, dto.unidades, TenantContext.requireFinca());
   }
 
   @Patch(':id/confirmar')

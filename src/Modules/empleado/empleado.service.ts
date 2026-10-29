@@ -55,11 +55,14 @@ export class EmpleadoService extends BaseOfflineService<Empleado> {
 
   private validarMontos(data: Partial<Empleado>) {
     for (const [campo, valor] of Object.entries({
-      montoporhora: data.montoporhora, montoporjornal: data.montoporjornal,
+      montoporhora: data.montoporhora, montoporjornal: data.montoporjornal, valorpago: data.valorpago,
     })) {
       if (valor !== undefined && valor !== null && !(Number(valor) >= 0)) {
         throw new BadRequestException(`${campo} debe ser mayor o igual a cero`);
       }
+    }
+    if (data.tipopago !== undefined && !['dia', 'semana', 'mes'].includes(data.tipopago)) {
+      throw new BadRequestException('El tipo de pago debe ser dia, semana o mes');
     }
   }
 
@@ -77,6 +80,8 @@ export class EmpleadoService extends BaseOfflineService<Empleado> {
         await this.repo.update(data.idusuario as number, {
           montoporhora: data.montoporhora ?? existente.montoporhora,
           montoporjornal: data.montoporjornal ?? existente.montoporjornal,
+          tipopago: data.tipopago ?? existente.tipopago,
+          valorpago: data.valorpago ?? existente.valorpago,
         });
       } else {
         await this.repo.save(this.repo.create(data));
@@ -87,7 +92,10 @@ export class EmpleadoService extends BaseOfflineService<Empleado> {
 
   update(id: number, data: Partial<Empleado>) {
     this.validarMontos(data);
-    const cambios = { montoporhora: data.montoporhora, montoporjornal: data.montoporjornal };
+    const cambios = {
+      montoporhora: data.montoporhora, montoporjornal: data.montoporjornal,
+      tipopago: data.tipopago, valorpago: data.valorpago,
+    };
     return this.updateOffline(id, cambios, async () => {
       if (!(await this.fincas.esMiembro(this.idfinca, id, 'empleado'))) {
         throw new NotFoundException(`empleado #${id} no pertenece a esta finca`);

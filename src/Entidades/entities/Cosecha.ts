@@ -29,4 +29,12 @@ export class Cosecha {
 
   @Column("integer", { name: "idadminregistro", nullable: true })
   idadminregistro: number | null;
+
+  /** Tarea de cosecha de la que salió este registro (null si se registró a mano). */
+  @Column("integer", { name: "idtarea", nullable: true })
+  idtarea: number | null;
+
+  /** Empleado que la recolectó (null si no se sabe). */
+  @Column("integer", { name: "idempleado", nullable: true })
+  idempleado: number | null;
 }

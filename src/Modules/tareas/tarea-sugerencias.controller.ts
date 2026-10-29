@@ -13,12 +13,6 @@ export class TareaSugerenciasController {
     return this.service.insumosSugeridos(TenantContext.requireFinca(), id, TenantContext.requireUser());
   }
 
-  @Get(':id/pago-sugerido')
-  @Roles('admin')
-  pago(@Param('id', ParseIntPipe) id: number, @Query('idempleado', ParseIntPipe) idempleado: number) {
-    return this.service.pagoSugerido(TenantContext.requireFinca(), id, idempleado, TenantContext.requireUser());
-  }
-
   @Get(':id/costos')
   @Roles('admin')
   costos(@Param('id', ParseIntPipe) id: number) {

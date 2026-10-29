@@ -283,6 +283,8 @@ export class UsuariosService extends BaseOfflineService<Usuario> {
             idusuario:      usuario.idusuario,
             montoporhora:   data.montoporhora   ?? 0,
             montoporjornal: data.montoporjornal ?? 0,
+            tipopago:       data.tipopago       ?? 'dia',
+            valorpago:      data.valorpago      ?? 0,
           }));
           // valida el límite del plan y crea la membresía dentro de la misma transacción
           await this.fincas.agregarMiembro(idfinca, usuario.idusuario, 'empleado', { manager: m });
@@ -300,6 +302,8 @@ export class UsuariosService extends BaseOfflineService<Usuario> {
     return this.registrarOffline(userData, 'empleado', {
       montoporhora: data.montoporhora ?? 0,
       montoporjornal: data.montoporjornal ?? 0,
+      tipopago: data.tipopago ?? 'dia',
+      valorpago: data.valorpago ?? 0,
       idfinca,
       creadoPor: admin.idusuario,
     });

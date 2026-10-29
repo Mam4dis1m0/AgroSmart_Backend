@@ -15,12 +15,51 @@ function dsCon(respuestas: Record<string, any[] | ((p: any[]) => any[])>) {
   return { ds: { query } as any, query };
 }
 
-const tarea = (o = {}) => ({ tipoactividad: 'Fertilización', idplantilla: 7, horasestimadas: 4, costototal: 20000, ...o });
+const tarea = (o = {}) => ({ tipoactividad: 'Fertilización', idplantilla: 7, horasestimadas: 4, costototal: 20000, hectareas: null, ...o });
+
+describe('TareaSugerenciasService.insumosSugeridos (por hectárea)', () => {
+  it('escala la cantidad de la plantilla y del historial por las hectáreas del lote', async () => {
+    const { ds } = dsCon({
+      'FROM tarea t': [tarea({ hectareas: 2.5 })],
+      'FROM detalle_tarea WHERE idtarea': [],
+      'AVG(d.cantidadusada)': [{ idinsumo: 11, nombre: 'Urea', unidadmedida: 'kg', stockactual: 90, cantidad: 30, porhectarea: 10 }],
+      'FROM plantilla_labor_insumo': [{ idinsumo: null, tipoinsumo: 'Fertilizante', unidad: 'kg', cantidadsugerida: null }],
+      'tipo ILIKE': [{ idinsumo: 11, nombre: 'Urea', unidadmedida: 'kg', stockactual: 90 }],
+    });
+
+    const r = await new TareaSugerenciasService(ds).insumosSugeridos(1, 3, admin);
+
+    expect(r[0]).toMatchObject({ idinsumo: 11, cantidad: 25, hectareas: 2.5 }); // 10 kg/ha × 2,5 ha
+  });
+
+  it('la cantidad de una plantilla (por hectárea) se multiplica por las hectáreas', async () => {
+    const { ds } = dsCon({
+      'FROM tarea t': [tarea({ hectareas: 4 })],
+      'FROM plantilla_labor_insumo': [{ idinsumo: 11, tipoinsumo: null, unidad: 'kg', cantidadsugerida: 12.5 }],
+      'FROM insumo WHERE idinsumo': [{ idinsumo: 11, nombre: 'Urea', unidadmedida: 'kg', stockactual: 90 }],
+    });
+
+    const r = await new TareaSugerenciasService(ds).insumosSugeridos(1, 3, admin);
+
+    expect(r[0].cantidad).toBe(50);
+  });
+
+  it('si el lote no tiene área registrada no escala y usa el promedio simple del historial', async () => {
+    const { ds } = dsCon({
+      'FROM tarea t': [tarea({ hectareas: null, idplantilla: null })],
+      'AVG(d.cantidadusada)': [{ idinsumo: 12, nombre: 'Foliar', unidadmedida: 'L', stockactual: 9, cantidad: 2.345, porhectarea: 1.1 }],
+    });
+
+    const r = await new TareaSugerenciasService(ds).insumosSugeridos(1, 3, admin);
+
+    expect(r[0]).toMatchObject({ cantidad: 2.35, hectareas: null });
+  });
+});
 
 describe('TareaSugerenciasService.insumosSugeridos', () => {
   it('propone el insumo de la finca que coincide con el tipo de la plantilla y la cantidad histórica', async () => {
     const { ds } = dsCon({
-      'FROM tarea WHERE idtarea': [tarea()],
+      'FROM tarea t': [tarea()],
       'FROM detalle_tarea WHERE idtarea': [],
       'AVG(d.cantidadusada)': [{ idinsumo: 11, nombre: 'Urea', unidadmedida: 'kg', stockactual: 40, cantidad: 12.5 }],
       'FROM plantilla_labor_insumo': [{ idinsumo: null, tipoinsumo: 'Fertilizante', unidad: 'kg', cantidadsugerida: null }],
@@ -40,7 +79,7 @@ describe('TareaSugerenciasService.insumosSugeridos', () => {
 
   it('sin plantilla usa el historial de la labor y no repite lo ya registrado en la tarea', async () => {
     const { ds } = dsCon({
-      'FROM tarea WHERE idtarea': [tarea({ idplantilla: null })],
+      'FROM tarea t': [tarea({ idplantilla: null })],
       'FROM detalle_tarea WHERE idtarea': [{ idinsumo: 11 }],
       'AVG(d.cantidadusada)': [
         { idinsumo: 11, nombre: 'Urea', unidadmedida: 'kg', stockactual: 40, cantidad: 12 },
@@ -56,7 +95,7 @@ describe('TareaSugerenciasService.insumosSugeridos', () => {
 
   it('si la finca no tiene insumos de ese tipo igual muestra el tipo para que elija uno', async () => {
     const { ds } = dsCon({
-      'FROM tarea WHERE idtarea': [tarea()],
+      'FROM tarea t': [tarea()],
       'FROM plantilla_labor_insumo': [{ idinsumo: null, tipoinsumo: 'Herbicida', unidad: 'L', cantidadsugerida: null }],
     });
 
@@ -66,74 +105,40 @@ describe('TareaSugerenciasService.insumosSugeridos', () => {
   });
 
   it('un empleado no ve sugerencias de tareas que no le asignaron', async () => {
-    const { ds } = dsCon({ 'FROM tarea WHERE idtarea': [tarea()], 'FROM asignacion_tarea WHERE idtarea': [] });
+    const { ds } = dsCon({ 'FROM tarea t': [tarea()], 'FROM asignacion_tarea WHERE idtarea': [] });
 
     await expect(new TareaSugerenciasService(ds).insumosSugeridos(1, 3, empleado)).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
 
-describe('TareaSugerenciasService.pagoSugerido', () => {
-  it('labor por tiempo: horas estimadas × tarifa del empleado', async () => {
-    const { ds } = dsCon({
-      'FROM tarea WHERE idtarea': [tarea({ horasestimadas: 4 })],
-      'AS modalidad': [{ modalidad: 'tiempo' }],
-      'FROM empleado': [{ hora: 6000, jornal: 0 }],
-    });
-
-    const r = await new TareaSugerenciasService(ds).pagoSugerido(1, 3, 5, admin);
-
-    expect(r).toMatchObject({ modalidad: 'tiempo', sugerido: 24000, base: 'tarifa' });
-  });
-
-  it('sin tarifa por hora usa el jornal dividido en 8 horas', async () => {
-    const { ds } = dsCon({
-      'FROM tarea WHERE idtarea': [tarea({ horasestimadas: 8 })],
-      'AS modalidad': [{ modalidad: 'tiempo' }],
-      'FROM empleado': [{ hora: 0, jornal: 80000 }],
-    });
-
-    expect((await new TareaSugerenciasService(ds).pagoSugerido(1, 3, 5, admin)).sugerido).toBe(80000);
-  });
-
-  it('labor a destajo: promedio de lo pagado antes en la misma labor', async () => {
-    const { ds } = dsCon({
-      'FROM tarea WHERE idtarea': [tarea({ tipoactividad: 'Cosecha' })],
-      'AS modalidad': [{ modalidad: 'fijo' }],
-      'AVG(a.pagoacordado)': [{ promedio: 148333.4, muestras: 3 }],
-    });
-
-    const r = await new TareaSugerenciasService(ds).pagoSugerido(1, 3, 5, admin);
-
-    expect(r).toMatchObject({ modalidad: 'fijo', sugerido: 148333, base: 'historico', muestras: 3 });
-  });
-
-  it('destajo sin historial cae a la tarifa del empleado; sin nada devuelve null', async () => {
-    const conTarifa = dsCon({
-      'FROM tarea WHERE idtarea': [tarea({ horasestimadas: 10 })],
-      'AS modalidad': [{ modalidad: 'fijo' }],
-      'AVG(a.pagoacordado)': [{ promedio: null, muestras: 0 }],
-      'FROM empleado': [{ hora: 5000, jornal: 0 }],
-    });
-    expect((await new TareaSugerenciasService(conTarifa.ds).pagoSugerido(1, 3, 5, admin)).sugerido).toBe(50000);
-
-    const sinDatos = dsCon({
-      'FROM tarea WHERE idtarea': [tarea({ horasestimadas: null })],
-      'AS modalidad': [{ modalidad: 'tiempo' }],
-      'FROM empleado': [{ hora: 0, jornal: 0 }],
-    });
-    expect(await new TareaSugerenciasService(sinDatos.ds).pagoSugerido(1, 3, 5, admin)).toMatchObject({ sugerido: null, base: null });
-  });
-});
-
 describe('TareaSugerenciasService.costos', () => {
-  it('suma insumos, mano de obra y transporte y muestra el estimado aparte', async () => {
+  it('la mano de obra es el tiempo trabajado × el costo por hora de la finca', async () => {
     const { ds } = dsCon({
-      'AS insumos': [{ insumos: 30000.5, mano: 45000, transporte: 5000 }], // primero: su SQL también contiene "FROM tarea WHERE idtarea"
-      'FROM tarea WHERE idtarea': [tarea({ costototal: 50000 })],
+      'AS insumos': [{ insumos: 30000.5, horas: 5, personas: 2, transporte: 5000 }], // primero: su SQL también contiene "FROM tarea WHERE idtarea"
+      'FROM finca WHERE idfinca': [{ inicio: '07:00:00', fin: '16:00:00', descanso: 60, personas: null }],
+      'FROM empleado e': [{ tipopago: 'dia', valorpago: 80000 }, { tipopago: 'dia', valorpago: 80000 }],
+      'FROM tarea t': [tarea({ costototal: 50000 })],
     });
 
     const r = await new TareaSugerenciasService(ds).costos(1, 3, admin);
 
-    expect(r).toEqual({ estimado: 50000, insumos: 30000.5, manoObra: 45000, transporte: 5000, total: 80000.5 });
+    // 80.000 por día ÷ 8 h = 10.000 por hora → 5 h-persona = 50.000
+    expect(r).toEqual({
+      estimado: 50000, insumos: 30000.5, manoObra: 50000, horas: 5, personas: 2, costoHora: 10000, transporte: 5000, total: 85000.5,
+    });
+  });
+
+  it('sin pago configurado en los empleados la mano de obra queda en cero (no inventa tarifas)', async () => {
+    const { ds } = dsCon({
+      'AS insumos': [{ insumos: 1000, horas: 4, personas: 1, transporte: 0 }],
+      'FROM finca WHERE idfinca': [{ inicio: '07:00:00', fin: '16:00:00', descanso: 60, personas: null }],
+      'FROM empleado e': [{ tipopago: 'dia', valorpago: 0 }],
+      'FROM tarea t': [tarea()],
+    });
+
+    const r = await new TareaSugerenciasService(ds).costos(1, 3, admin);
+
+    expect(r.manoObra).toBe(0);
+    expect(r.total).toBe(1000);
   });
 });

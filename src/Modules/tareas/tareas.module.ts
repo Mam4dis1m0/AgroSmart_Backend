@@ -16,6 +16,7 @@ import { TareaSugerenciasController } from './tarea-sugerencias.controller';
 import { TareaEvidenciaService } from './tarea-evidencia.service';
 import { TareaEvidenciaController } from './tarea-evidencia.controller';
 import { AvisosTareasService } from './avisos-tareas.service';
+import { JornadaController } from './jornada.controller';
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { AvisosTareasService } from './avisos-tareas.service';
     MailModule,
     CommonModule,
   ],
-  controllers: [TareasController, AsignacionSugeridaController, TareaSugerenciasController, TareaEvidenciaController],
+  controllers: [TareasController, AsignacionSugeridaController, TareaSugerenciasController, TareaEvidenciaController, JornadaController],
   providers: [TareasService, AsignacionSugeridaService, TareaSugerenciasService, TareaEvidenciaService, AvisosTareasService],
   exports: [AsignacionSugeridaService],
 })
