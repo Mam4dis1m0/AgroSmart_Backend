@@ -1,6 +1,17 @@
-import { Controller, Get, Post, Put, Delete, Param, Body } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+} from '@nestjs/common';
 import { AdministradorService } from './administrador.service';
-import { CreateAdministradorDto, UpdateAdministradorDto } from '../../dto/administrador.dto';
+import {
+  CreateAdministradorDto,
+  UpdateAdministradorDto,
+} from '../../dto/administrador.dto';
 import { Roles } from '../../auth/auth.decorators';
 
 @Controller('administrador')
@@ -17,7 +28,10 @@ export class AdministradorController {
   @Post() create(@Body() body: CreateAdministradorDto) {
     return this.service.create(body);
   }
-  @Put(':id') update(@Param('id') id: string, @Body() body: UpdateAdministradorDto) {
+  @Put(':id') update(
+    @Param('id') id: string,
+    @Body() body: UpdateAdministradorDto,
+  ) {
     return this.service.update(+id, body);
   }
   @Delete(':id') remove(@Param('id') id: string) {

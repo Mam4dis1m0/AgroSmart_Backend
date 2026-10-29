@@ -62,7 +62,11 @@ export class Insumo {
   })
   costounitario: number | null;
 
-  @Column('character varying', { name: 'unidadmedida', nullable: true, length: 50 })
+  @Column('character varying', {
+    name: 'unidadmedida',
+    nullable: true,
+    length: 50,
+  })
   unidadmedida: string | null;
 
   @Column('date', { name: 'fechaultimaactualizacion', nullable: true })

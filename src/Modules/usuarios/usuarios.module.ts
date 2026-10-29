@@ -13,7 +13,12 @@ import { FincasModule } from '../fincas/fincas.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Usuario, Administrador, Empleado, CompradorPerfil]),
+    TypeOrmModule.forFeature([
+      Usuario,
+      Administrador,
+      Empleado,
+      CompradorPerfil,
+    ]),
     CommonModule,
     MailModule,
     FincasModule,

@@ -33,7 +33,10 @@ describe('NOMBREService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         NOMBREService,
-        { provide: getRepositoryToken(ENTIDAD), useValue: mockENTIDADRepository },
+        {
+          provide: getRepositoryToken(ENTIDAD),
+          useValue: mockENTIDADRepository,
+        },
         { provide: CacheService, useValue: mockCacheService },
         { provide: OfflineQueueService, useValue: mockOfflineQueueService },
         { provide: SyncService, useValue: mockSyncService },

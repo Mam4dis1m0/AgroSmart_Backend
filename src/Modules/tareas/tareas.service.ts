@@ -103,11 +103,19 @@ export class TareasService {
   }
 
   /** El empleado solo puede operar sobre tareas que le asignaron. */
-  private async exigirAsignada(idtarea: number, idusuario: number): Promise<void> {
+  private async exigirAsignada(
+    idtarea: number,
+    idusuario: number,
+  ): Promise<void> {
     const total = await this.asignacionRepo.count({
-      where: { idfinca: this.idfinca, idtarea: idtarea as any, idempleado: idusuario as any },
+      where: {
+        idfinca: this.idfinca,
+        idtarea: idtarea as any,
+        idempleado: idusuario as any,
+      },
     });
-    if (total === 0) throw new ForbiddenException('Esta tarea no te fue asignada');
+    if (total === 0)
+      throw new ForbiddenException('Esta tarea no te fue asignada');
   }
 
   private async exigirEmpleadoDeFinca(idempleado: number): Promise<void> {
@@ -115,19 +123,33 @@ export class TareasService {
       `SELECT 1 FROM finca_usuario WHERE idfinca = $1 AND idusuario = $2 AND rol = 'empleado' AND activo = true`,
       [this.idfinca, idempleado],
     );
-    if (!r.length) throw new NotFoundException(`Empleado #${idempleado} no pertenece a esta finca.`);
+    if (!r.length)
+      throw new NotFoundException(
+        `Empleado #${idempleado} no pertenece a esta finca.`,
+      );
   }
 
   /** CU-07 / RNF-05: el cultivo debe ser de la finca, estar activo y la fecha no puede ser previa a la siembra. */
-  private async validarCultivo(idcultivo?: number | null, fechaprogramada?: string | null): Promise<void> {
+  private async validarCultivo(
+    idcultivo?: number | null,
+    fechaprogramada?: string | null,
+  ): Promise<void> {
     if (!idcultivo) return;
     const cultivo = await this.repo.manager
       .getRepository(Cultivo)
       .findOneBy({ idcultivo, idfinca: this.idfinca });
-    if (!cultivo) throw new NotFoundException('El cultivo no existe en esta finca');
-    if (cultivo.activo === false) throw new BadRequestException('El cultivo no está activo');
-    if (fechaprogramada && cultivo.fechasiembra && new Date(fechaprogramada) < new Date(cultivo.fechasiembra)) {
-      throw new BadRequestException('La tarea no puede programarse antes de la fecha de siembra del cultivo');
+    if (!cultivo)
+      throw new NotFoundException('El cultivo no existe en esta finca');
+    if (cultivo.activo === false)
+      throw new BadRequestException('El cultivo no está activo');
+    if (
+      fechaprogramada &&
+      cultivo.fechasiembra &&
+      new Date(fechaprogramada) < new Date(cultivo.fechasiembra)
+    ) {
+      throw new BadRequestException(
+        'La tarea no puede programarse antes de la fecha de siembra del cultivo',
+      );
     }
   }
 
@@ -143,10 +165,29 @@ export class TareasService {
 
     const tareas = await this.baseQuery().getMany();
 
-    const pending = (this.cache.get<any[]>(CACHE_KEY) ?? []).filter(t => t._offline === true);
-    const supabaseIds = new Set(tareas.map(t => String(t.idtarea)));
-    const soloOffline = pending.filter(t => !supabaseIds.has(String(t.idtarea)));
-    const merged = [...tareas, ...soloOffline];
+    // Fotos de evidencia ya subidas por tarea (el frontend las muestra como ícono en las listas).
+    const conteo = new Map<number, number>();
+    const ids = tareas.map((t) => t.idtarea);
+    if (ids.length > 0) {
+      const filas: { idtarea: number; n: number }[] =
+        await this.repo.manager.query(
+          `SELECT idtarea, COUNT(*)::int AS n FROM tarea_evidencia WHERE idfinca = $1 AND idtarea = ANY($2) GROUP BY idtarea`,
+          [this.idfinca, ids],
+        );
+      for (const f of filas) conteo.set(f.idtarea, f.n);
+    }
+
+    const pending = (this.cache.get<any[]>(CACHE_KEY) ?? []).filter(
+      (t) => t._offline === true,
+    );
+    const supabaseIds = new Set(tareas.map((t) => String(t.idtarea)));
+    const soloOffline = pending.filter(
+      (t) => !supabaseIds.has(String(t.idtarea)),
+    );
+    const merged = [
+      ...tareas.map((t) => ({ ...t, evidencias: conteo.get(t.idtarea) ?? 0 })),
+      ...soloOffline,
+    ];
 
     this.cache.set(CACHE_KEY, merged);
     return merged;
@@ -158,11 +199,15 @@ export class TareasService {
     const online = await this.sync.isOnline();
 
     if (!online) {
-      this.logger.warn(`📴 Sin internet — devolviendo tarea #${id} desde caché`);
+      this.logger.warn(
+        `📴 Sin internet — devolviendo tarea #${id} desde caché`,
+      );
       return this.cache.get<Tarea>(CACHE_KEY) ?? null;
     }
 
-    const tarea = await this.baseQuery().andWhere('tarea.idtarea = :id', { id }).getOne();
+    const tarea = await this.baseQuery()
+      .andWhere('tarea.idtarea = :id', { id })
+      .getOne();
 
     if (tarea) this.cache.set(CACHE_KEY, tarea);
     return tarea;
@@ -174,11 +219,15 @@ export class TareasService {
     const online = await this.sync.isOnline();
 
     if (!online) {
-      this.logger.warn(`📴 Sin internet — devolviendo tareas estado "${estado}" desde caché`);
+      this.logger.warn(
+        `📴 Sin internet — devolviendo tareas estado "${estado}" desde caché`,
+      );
       return this.cache.get<Tarea[]>(CACHE_KEY) ?? [];
     }
 
-    const tareas = await this.baseQuery().andWhere('tarea.estado = :estado', { estado }).getMany();
+    const tareas = await this.baseQuery()
+      .andWhere('tarea.estado = :estado', { estado })
+      .getMany();
     this.cache.set(CACHE_KEY, tareas);
     return tareas;
   }
@@ -198,7 +247,9 @@ export class TareasService {
       const entity = this.repo.create({
         ...datos,
         idadmincreador: { idusuario: datos.idadmincreador } as any,
-        idcultivo:      dto.idcultivo ? ({ idcultivo: dto.idcultivo } as any) : undefined,
+        idcultivo: dto.idcultivo
+          ? ({ idcultivo: dto.idcultivo } as any)
+          : undefined,
       });
       const saved = await this.repo.save(entity);
       const all = this.cache.get<Tarea[]>(this.k('all')) ?? [];
@@ -209,24 +260,46 @@ export class TareasService {
     const tempId = `offline_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     let _nombreEmpleado: string | null = null;
     if ((dto as any).idempleado) {
-      const empleados: any[] = this.cache.get<any[]>(this.claveEmpleados()) ?? [];
-      const emp = empleados.find((e: any) => e.idusuario === (dto as any).idempleado);
+      const empleados: any[] =
+        this.cache.get<any[]>(this.claveEmpleados()) ?? [];
+      const emp = empleados.find(
+        (e: any) => e.idusuario === (dto as any).idempleado,
+      );
       if (emp?.idusuario2) {
-        _nombreEmpleado = [emp.idusuario2.primernombre, emp.idusuario2.primerapellido].filter(Boolean).join(' ');
+        _nombreEmpleado = [
+          emp.idusuario2.primernombre,
+          emp.idusuario2.primerapellido,
+        ]
+          .filter(Boolean)
+          .join(' ');
       } else if (emp?.primernombre) {
-        _nombreEmpleado = [emp.primernombre, emp.primerapellido].filter(Boolean).join(' ');
+        _nombreEmpleado = [emp.primernombre, emp.primerapellido]
+          .filter(Boolean)
+          .join(' ');
       }
     }
 
-    const tempEntity = { idtarea: tempId, ...datos, _offline: true, _pendiente: 'CREATE', _nombreEmpleado };
+    const tempEntity = {
+      idtarea: tempId,
+      ...datos,
+      _offline: true,
+      _pendiente: 'CREATE',
+      _nombreEmpleado,
+    };
     const all = this.cache.get<any[]>(this.k('all')) ?? [];
     this.cache.set(this.k('all'), [...all, tempEntity]);
 
-    const datosSinCamposExtra = Object.fromEntries(Object.entries(datos).filter(([k]) => k !== 'idempleado'));
+    const datosSinCamposExtra = Object.fromEntries(
+      Object.entries(datos).filter(([k]) => k !== 'idempleado'),
+    );
     this.offlineQueue.add('tarea', 'CREATE', datosSinCamposExtra);
     this.logger.log(`📥 Tarea guardada offline (id temporal: ${tempId})`);
 
-    return { ...tempEntity, _mensaje: 'Guardado localmente. Se subirá a Supabase cuando haya internet.' };
+    return {
+      ...tempEntity,
+      _mensaje:
+        'Guardado localmente. Se subirá a Supabase cuando haya internet.',
+    };
   }
 
   // ── update ────────────────────────────────────────────────────────────────
@@ -242,7 +315,9 @@ export class TareasService {
     // CU-10: el empleado solo puede cambiar el ESTADO de las tareas que le asignaron
     if (user.rol === 'empleado') {
       if (dto.estado === undefined) {
-        throw new ForbiddenException('Un empleado solo puede actualizar el estado de sus tareas');
+        throw new ForbiddenException(
+          'Un empleado solo puede actualizar el estado de sus tareas',
+        );
       }
       cambios = { estado: dto.estado };
     }
@@ -260,7 +335,10 @@ export class TareasService {
         }
       }
 
-      if (cambios.idcultivo !== undefined || cambios.fechaprogramada !== undefined) {
+      if (
+        cambios.idcultivo !== undefined ||
+        cambios.fechaprogramada !== undefined
+      ) {
         await this.validarCultivo(
           cambios.idcultivo ?? undefined,
           cambios.fechaprogramada ?? entity.fechaprogramada,
@@ -294,7 +372,11 @@ export class TareasService {
     );
     this.cache.set(this.k('all'), all);
     // idfinca viaja en la cola: al sincronizar solo se actualiza la fila de ESA finca
-    this.offlineQueue.add('tarea', 'UPDATE', { idtarea: id, ...cambios, idfinca });
+    this.offlineQueue.add('tarea', 'UPDATE', {
+      idtarea: id,
+      ...cambios,
+      idfinca,
+    });
     this.logger.log(`📥 Tarea #${id} actualizada offline`);
     return {
       ...updated,
@@ -311,11 +393,14 @@ export class TareasService {
     if (online) {
       try {
         const res = await this.repo.delete({ idtarea: id, idfinca });
-        if (!res.affected) throw new NotFoundException(`Tarea #${id} no encontrada.`);
+        if (!res.affected)
+          throw new NotFoundException(`Tarea #${id} no encontrada.`);
       } catch (err: any) {
         // RNF-06: no se borra lo que tiene registros dependientes
         if (err?.code === '23503') {
-          throw new ConflictException(`No se puede eliminar la tarea #${id}: tiene registros asociados.`);
+          throw new ConflictException(
+            `No se puede eliminar la tarea #${id}: tiene registros asociados.`,
+          );
         }
         throw err;
       }
@@ -341,7 +426,10 @@ export class TareasService {
   }
 
   // ── asignar ───────────────────────────────────────────────────────────────
-  async asignar(idTarea: number, dto: AsignarTareaDto): Promise<AsignacionTarea | any> {
+  async asignar(
+    idTarea: number,
+    dto: AsignarTareaDto,
+  ): Promise<AsignacionTarea | any> {
     const online = await this.sync.isOnline();
     const admin = TenantContext.requireUser();
     const idfinca = this.idfinca;
@@ -352,14 +440,18 @@ export class TareasService {
         where: { idtarea: idTarea, idfinca },
         relations: ['idcultivo', 'idcultivo.idlote'],
       });
-      if (!tarea) throw new NotFoundException(`Tarea #${idTarea} no encontrada.`);
+      if (!tarea)
+        throw new NotFoundException(`Tarea #${idTarea} no encontrada.`);
 
       await this.exigirEmpleadoDeFinca(dto.idempleado);
       const empleado = await this.empleadoRepo.findOne({
         where: { idusuario: dto.idempleado },
         relations: ['idusuario2'],
       });
-      if (!empleado) throw new NotFoundException(`Empleado #${dto.idempleado} no encontrado.`);
+      if (!empleado)
+        throw new NotFoundException(
+          `Empleado #${dto.idempleado} no encontrado.`,
+        );
 
       let asignacion = await this.asignacionRepo
         .createQueryBuilder('a')
@@ -373,21 +465,22 @@ export class TareasService {
 
       if (asignacion) {
         Object.assign(asignacion, {
-          estado:           dto.estado           ?? asignacion.estado,
-          pagoacordado:     dto.pagoacordado      ?? asignacion.pagoacordado,
-          fechaasignacion:  dto.fechaasignacion   ?? asignacion.fechaasignacion,
+          estado: dto.estado ?? asignacion.estado,
+          pagoacordado: dto.pagoacordado ?? asignacion.pagoacordado,
+          fechaasignacion: dto.fechaasignacion ?? asignacion.fechaasignacion,
           idadminasignador: { idusuario: admin.idusuario } as any,
         });
       } else {
         asignacion = this.asignacionRepo.create({
           idfinca,
-          fechaasignacion:  dto.fechaasignacion ?? new Date().toISOString().split('T')[0],
-          estado:           dto.estado          ?? 'Asignado',
-          pagoacordado:     dto.pagoacordado    ?? null,
+          fechaasignacion:
+            dto.fechaasignacion ?? new Date().toISOString().split('T')[0],
+          estado: dto.estado ?? 'Asignado',
+          pagoacordado: dto.pagoacordado ?? null,
           origenasignacion: origen,
-          idtarea:          { idtarea: idTarea }                as any,
-          idempleado:       { idusuario: dto.idempleado }       as any,
-          idadminasignador: { idusuario: admin.idusuario }      as any,
+          idtarea: { idtarea: idTarea } as any,
+          idempleado: { idusuario: dto.idempleado } as any,
+          idadminasignador: { idusuario: admin.idusuario } as any,
         });
       }
 
@@ -400,23 +493,33 @@ export class TareasService {
           .createQueryBuilder()
           .update(AsignacionTarea)
           .set({ estado: 'Reasignada' })
-          .where('idfinca = :f AND idtarea = :t AND idasigtarea <> :a AND estado IS DISTINCT FROM :c', {
-            f: idfinca, t: idTarea, a: saved.idasigtarea, c: 'Completado',
-          })
+          .where(
+            'idfinca = :f AND idtarea = :t AND idasigtarea <> :a AND estado IS DISTINCT FROM :c',
+            {
+              f: idfinca,
+              t: idTarea,
+              a: saved.idasigtarea,
+              c: 'Completado',
+            },
+          )
           .execute();
       }
 
       await this.notificar(
-        dto.idempleado, 'Nueva tarea asignada', `Te asignaron: ${tarea.tipoactividad ?? 'una tarea'}`, 'tarea_asignada', idTarea,
+        dto.idempleado,
+        'Nueva tarea asignada',
+        `Te asignaron: ${tarea.tipoactividad ?? 'una tarea'}`,
+        'tarea_asignada',
+        idTarea,
       );
 
       // ── Email al empleado ────────────────────────────────────────────────
       const emailEmpleado = empleado.idusuario2?.email ?? '';
       if (emailEmpleado) {
         await this.mailService.notificarTareaAsignada(emailEmpleado, {
-          nombreTarea:     tarea.tipoactividad    ?? 'Sin nombre',
-          fechaProgramada: tarea.fechaprogramada  ?? null,
-          pagoacordado:    dto.pagoacordado       ?? null,
+          nombreTarea: tarea.tipoactividad ?? 'Sin nombre',
+          fechaProgramada: tarea.fechaprogramada ?? null,
+          pagoacordado: dto.pagoacordado ?? null,
         });
       }
 
@@ -461,15 +564,17 @@ export class TareasService {
                 `⚠️ Stock bajo: "${insumoFresco.nombre}" (${stockActual} ≤ ${stockMinimo}) → email a ${emailAdmin}`,
               );
               await this.mailService.notificarStockBajo(emailAdmin, {
-                nombreInsumo:  insumoFresco.nombre      ?? 'Sin nombre',
-                tipo:          insumoFresco.tipo         ?? null,
-                stockActual:   stockActual,
-                stockMinimo:   stockMinimo,
-                unidadMedida:  insumoFresco.unidadmedida ?? null,
+                nombreInsumo: insumoFresco.nombre ?? 'Sin nombre',
+                tipo: insumoFresco.tipo ?? null,
+                stockActual: stockActual,
+                stockMinimo: stockMinimo,
+                unidadMedida: insumoFresco.unidadmedida ?? null,
                 cantidadUsada: cantidadUsada,
               });
             } else {
-              this.logger.warn(`⚠️ Stock bajo en "${insumoFresco.nombre}" pero no hay email de admin`);
+              this.logger.warn(
+                `⚠️ Stock bajo en "${insumoFresco.nombre}" pero no hay email de admin`,
+              );
             }
           }
         }
@@ -479,20 +584,33 @@ export class TareasService {
 
       return this.asignacionRepo.findOneOrFail({
         where: { idasigtarea: saved.idasigtarea, idfinca },
-        relations: ['idtarea', 'idempleado', 'idempleado.idusuario2', 'idadminasignador'],
+        relations: [
+          'idtarea',
+          'idempleado',
+          'idempleado.idusuario2',
+          'idadminasignador',
+        ],
       });
     }
 
     // ── Modo offline ──────────────────────────────────────────────────────────
     let nombreEmpleado = '—';
-    const empleadosCache: any[] = this.cache.get<any[]>(this.claveEmpleados()) ?? [];
-    const empCache = empleadosCache.find((e: any) => e.idusuario === dto.idempleado);
+    const empleadosCache: any[] =
+      this.cache.get<any[]>(this.claveEmpleados()) ?? [];
+    const empCache = empleadosCache.find(
+      (e: any) => e.idusuario === dto.idempleado,
+    );
     if (empCache?.idusuario2) {
-      nombreEmpleado = [empCache.idusuario2.primernombre, empCache.idusuario2.primerapellido]
-        .filter(Boolean).join(' ');
+      nombreEmpleado = [
+        empCache.idusuario2.primernombre,
+        empCache.idusuario2.primerapellido,
+      ]
+        .filter(Boolean)
+        .join(' ');
     } else if (empCache?.primernombre) {
       nombreEmpleado = [empCache.primernombre, empCache.primerapellido]
-        .filter(Boolean).join(' ');
+        .filter(Boolean)
+        .join(' ');
     }
 
     const tareasAll: any[] = this.cache.get<any[]>(this.k('all')) ?? [];
@@ -503,17 +621,18 @@ export class TareasService {
         idempleado: {
           idusuario: dto.idempleado,
           idusuario2: empCache?.idusuario2 ?? {
-            primernombre:   empCache?.primernombre   ?? '—',
+            primernombre: empCache?.primernombre ?? '—',
             primerapellido: empCache?.primerapellido ?? '',
           },
         },
-        estado:          dto.estado          ?? 'Asignado',
-        pagoacordado:    dto.pagoacordado    ?? null,
-        fechaasignacion: dto.fechaasignacion ?? new Date().toISOString().split('T')[0],
+        estado: dto.estado ?? 'Asignado',
+        pagoacordado: dto.pagoacordado ?? null,
+        fechaasignacion:
+          dto.fechaasignacion ?? new Date().toISOString().split('T')[0],
       };
       return {
         ...t,
-        _nombreEmpleado:  nombreEmpleado,
+        _nombreEmpleado: nombreEmpleado,
         asignacionTareas: [...(t.asignacionTareas ?? []), asigSimulada],
       };
     });
@@ -527,16 +646,20 @@ export class TareasService {
       idadminasignador: admin.idusuario,
       idfinca,
     });
-    this.logger.log(`📥 Asignación tarea #${idTarea} encolada offline — empleado: ${nombreEmpleado}`);
+    this.logger.log(
+      `📥 Asignación tarea #${idTarea} encolada offline — empleado: ${nombreEmpleado}`,
+    );
 
     return {
-      _offline:        true,
-      idtarea:         idTarea,
+      _offline: true,
+      idtarea: idTarea,
       ...dto,
-      estado:          dto.estado          ?? 'Asignado',
-      fechaasignacion: dto.fechaasignacion ?? new Date().toISOString().split('T')[0],
+      estado: dto.estado ?? 'Asignado',
+      fechaasignacion:
+        dto.fechaasignacion ?? new Date().toISOString().split('T')[0],
       _nombreEmpleado: nombreEmpleado,
-      _mensaje:        'Asignación guardada localmente. Se subirá cuando haya internet.',
+      _mensaje:
+        'Asignación guardada localmente. Se subirá cuando haya internet.',
     };
   }
 
@@ -556,22 +679,37 @@ export class TareasService {
     return d;
   }
 
-  private async asignacionPropia(idAsignacion: number): Promise<AsignacionTarea> {
+  private async asignacionPropia(
+    idAsignacion: number,
+  ): Promise<AsignacionTarea> {
     const user = TenantContext.requireUser();
     const asignacion = await this.asignacionRepo.findOne({
       where: { idasigtarea: idAsignacion, idfinca: this.idfinca },
-      relations: ['idtarea', 'idempleado', 'idempleado.idusuario2', 'idadminasignador', 'idadminasignador.idusuario2'],
+      relations: [
+        'idtarea',
+        'idempleado',
+        'idempleado.idusuario2',
+        'idadminasignador',
+        'idadminasignador.idusuario2',
+      ],
     });
-    if (!asignacion) throw new NotFoundException(`Asignación #${idAsignacion} no encontrada.`);
+    if (!asignacion)
+      throw new NotFoundException(`Asignación #${idAsignacion} no encontrada.`);
     // Un empleado solo opera SUS asignaciones
-    if (user.rol === 'empleado' && asignacion.idempleado?.idusuario !== user.idusuario) {
+    if (
+      user.rol === 'empleado' &&
+      asignacion.idempleado?.idusuario !== user.idusuario
+    ) {
       throw new ForbiddenException('Esta asignación no es tuya');
     }
     return asignacion;
   }
 
   /** Marca el inicio real del trabajo (queda la hora); la tarea pasa a "En progreso". */
-  async iniciar(idAsignacion: number, at?: string | null): Promise<AsignacionTarea> {
+  async iniciar(
+    idAsignacion: number,
+    at?: string | null,
+  ): Promise<AsignacionTarea> {
     const asignacion = await this.asignacionPropia(idAsignacion);
     if (asignacion.estado === 'Completado') {
       throw new BadRequestException('La asignación ya está completada');
@@ -584,10 +722,16 @@ export class TareasService {
 
     if (asignacion.idtarea) {
       const idtarea = asignacion.idtarea.idtarea;
-      await this.repo.update({ idtarea, idfinca: this.idfinca }, { estado: 'En progreso' });
+      await this.repo.update(
+        { idtarea, idfinca: this.idfinca },
+        { estado: 'En progreso' },
+      );
       // Primera vez que alguien empieza esta tarea
       if (!asignacion.idtarea.fechainicio) {
-        await this.repo.update({ idtarea, idfinca: this.idfinca }, { fechainicio: inicio });
+        await this.repo.update(
+          { idtarea, idfinca: this.idfinca },
+          { fechainicio: inicio },
+        );
       }
       this.cache.delete(this.k(String(idtarea)));
     }
@@ -596,7 +740,13 @@ export class TareasService {
   }
 
   /** Aviso dentro de la app para una persona. Nunca interrumpe la operación que lo origina. */
-  private async notificar(idusuario: number | null | undefined, titulo: string, mensaje: string, tipo: string, idtarea: number) {
+  private async notificar(
+    idusuario: number | null | undefined,
+    titulo: string,
+    mensaje: string,
+    tipo: string,
+    idtarea: number,
+  ) {
     if (!idusuario) return;
     try {
       await this.repo.manager.query(
@@ -605,20 +755,29 @@ export class TareasService {
         [this.idfinca, idusuario, titulo, mensaje, tipo, idtarea],
       );
     } catch (err: any) {
-      this.logger.warn(`No se pudo crear la notificación (${tipo}): ${err?.message}`);
+      this.logger.warn(
+        `No se pudo crear la notificación (${tipo}): ${err?.message}`,
+      );
     }
   }
 
   /** Costo real de la tarea: insumos usados + mano de obra (horas trabajadas × costo por hora de la finca) + transporte. */
   private async calcularCostoReal(idtarea: number): Promise<number> {
-    const consulta = (q: string, par?: any[]) => this.repo.manager.query(q, par);
-    const [r] = filas<FilaCosto>(await consulta(COSTO_TAREA_SQL, [idtarea, this.idfinca]));
+    const consulta = (q: string, par?: any[]) =>
+      this.repo.manager.query(q, par);
+    const [r] = filas<FilaCosto>(
+      await consulta(COSTO_TAREA_SQL, [idtarea, this.idfinca]),
+    );
     return armarCosto(r, await costoHoraDeFinca(consulta, this.idfinca)).total;
   }
 
   // ── completar ─────────────────────────────────────────────────────────────
   // notificarTareaCompletada sigue recibiendo 3 argumentos (emailAdmin, nombreTarea, nombreEmpleado).
-  async completar(idAsignacion: number, at?: string | null, cosecha?: DatosCosecha | null): Promise<AsignacionTarea> {
+  async completar(
+    idAsignacion: number,
+    at?: string | null,
+    cosecha?: DatosCosecha | null,
+  ): Promise<AsignacionTarea> {
     const datosCosecha = this.validarCosecha(cosecha);
     const asignacion = await this.asignacionPropia(idAsignacion);
     const fin = this.instante(at);
@@ -627,7 +786,9 @@ export class TareasService {
     asignacion.estado = 'Completado';
     asignacion.fechafin = asignacion.fechafin ?? fin;
     if (asignacion.fechainicio && !asignacion.horastrabajadas) {
-      const horas = (fin.getTime() - new Date(asignacion.fechainicio).getTime()) / 3_600_000;
+      const horas =
+        (fin.getTime() - new Date(asignacion.fechainicio).getTime()) /
+        3_600_000;
       asignacion.horastrabajadas = Math.round(Math.max(horas, 0) * 100) / 100;
     }
     await this.asignacionRepo.save(asignacion);
@@ -636,21 +797,34 @@ export class TareasService {
     if (asignacion.idtarea) {
       const idtarea = asignacion.idtarea.idtarea;
       const pendientes = await this.asignacionRepo.count({
-        where: { idfinca: this.idfinca, idtarea: idtarea as any, estado: Not(In(['Completado', 'Reasignada'])) },
+        where: {
+          idfinca: this.idfinca,
+          idtarea: idtarea as any,
+          estado: Not(In(['Completado', 'Reasignada'])),
+        },
       });
       if (!pendientes) {
-        await this.repo.update({ idtarea, idfinca: this.idfinca }, { estado: 'Completado' });
+        await this.repo.update(
+          { idtarea, idfinca: this.idfinca },
+          { estado: 'Completado' },
+        );
         try {
           const costoreal = await this.calcularCostoReal(idtarea);
-          await this.repo.update({ idtarea, idfinca: this.idfinca }, { fechafin: fin, costoreal });
+          await this.repo.update(
+            { idtarea, idfinca: this.idfinca },
+            { fechafin: fin, costoreal },
+          );
         } catch (err: any) {
-          this.logger.warn(`No se pudo calcular el costo real de la tarea #${idtarea}: ${err.message}`);
+          this.logger.warn(
+            `No se pudo calcular el costo real de la tarea #${idtarea}: ${err.message}`,
+          );
         }
       }
     }
 
     // Tarea de cosecha: lo recolectado queda en el módulo de cosechas, ligado a la tarea y a quien lo recogió
-    if (datosCosecha) await this.registrarCosecha(asignacion, fin, datosCosecha);
+    if (datosCosecha)
+      await this.registrarCosecha(asignacion, fin, datosCosecha);
 
     // Aviso dentro de la app para quien asignó
     await this.notificar(
@@ -663,11 +837,16 @@ export class TareasService {
 
     // Email al admin
     const emailAdmin = asignacion.idadminasignador?.idusuario2?.email ?? '';
-    const nombreEmpleado = asignacion.idempleado?.idusuario2?.primernombre ?? 'Empleado';
+    const nombreEmpleado =
+      asignacion.idempleado?.idusuario2?.primernombre ?? 'Empleado';
     const nombreTarea = asignacion.idtarea?.tipoactividad ?? 'Sin nombre';
 
     if (emailAdmin) {
-      await this.mailService.notificarTareaCompletada(emailAdmin, nombreTarea, nombreEmpleado);
+      await this.mailService.notificarTareaCompletada(
+        emailAdmin,
+        nombreTarea,
+        nombreEmpleado,
+      );
     }
 
     // Invalidar caché para que el frontend vea el cambio
@@ -679,10 +858,18 @@ export class TareasService {
 
   /** Cantidad obtenida en una tarea de cosecha (la enviada por la app, ya normalizada). */
   private validarCosecha(c?: DatosCosecha | null): DatosCosecha | null {
-    if (!c || c.cantidad === undefined || c.cantidad === null || (c.cantidad as unknown) === '') return null;
+    if (
+      !c ||
+      c.cantidad === undefined ||
+      c.cantidad === null ||
+      (c.cantidad as unknown) === ''
+    )
+      return null;
     const cantidad = Number(c.cantidad);
     if (!Number.isFinite(cantidad) || cantidad <= 0) {
-      throw new BadRequestException('La cantidad cosechada debe ser un número mayor que cero');
+      throw new BadRequestException(
+        'La cantidad cosechada debe ser un número mayor que cero',
+      );
     }
     return {
       cantidad,
@@ -691,7 +878,11 @@ export class TareasService {
     };
   }
 
-  private async registrarCosecha(asignacion: AsignacionTarea, fin: Date, c: DatosCosecha) {
+  private async registrarCosecha(
+    asignacion: AsignacionTarea,
+    fin: Date,
+    c: DatosCosecha,
+  ) {
     const idtarea = asignacion.idtarea?.idtarea;
     if (!idtarea) return;
     try {
@@ -700,7 +891,12 @@ export class TareasService {
          SELECT t.idfinca, t.idcultivo, $3::date, $4, $5, $6, $7, $8, t.idtarea, $9
            FROM tarea t WHERE t.idtarea = $1 AND t.idfinca = $2 AND t.idcultivo IS NOT NULL`,
         [
-          idtarea, this.idfinca, fechaColombia(fin), c.cantidad, c.unidad, c.calidad ?? null,
+          idtarea,
+          this.idfinca,
+          fechaColombia(fin),
+          c.cantidad,
+          c.unidad,
+          c.calidad ?? null,
           `Tarea #${idtarea}: ${asignacion.idtarea?.tipoactividad ?? 'cosecha'}`,
           asignacion.idadminasignador?.idusuario ?? null,
           asignacion.idempleado?.idusuario ?? null,
@@ -708,22 +904,37 @@ export class TareasService {
       );
     } catch (err: any) {
       // La tarea ya quedó completada; la cosecha se puede registrar a mano en Producción › Cosechas
-      this.logger.error(`No se pudo registrar la cosecha de la tarea #${idtarea}: ${err?.message}`);
+      this.logger.error(
+        `No se pudo registrar la cosecha de la tarea #${idtarea}: ${err?.message}`,
+      );
     }
   }
 
-  async completarConEvidencia(idTarea: number, body: any, fotoPath: string | null) {
+  async completarConEvidencia(
+    idTarea: number,
+    body: any,
+    fotoPath: string | null,
+  ) {
     // Del cliente solo se acepta lo que escribe la persona (observaciones), la asignación y la hora
     // real del toque; actividad, fecha, empleado y lote salen de la base de datos.
     const { observaciones, idasigtarea, at } = body;
     // La cantidad cosechada viaja como campos del formulario multipart
     const cosecha: DatosCosecha | null = body.cosecha_cantidad
-      ? { cantidad: Number(String(body.cosecha_cantidad).replace(',', '.')), unidad: body.cosecha_unidad, calidad: body.cosecha_calidad }
+      ? {
+          cantidad: Number(String(body.cosecha_cantidad).replace(',', '.')),
+          unidad: body.cosecha_unidad,
+          calidad: body.cosecha_calidad,
+        }
       : null;
 
     const tarea = await this.repo.findOne({
       where: { idtarea: idTarea, idfinca: this.idfinca },
-      relations: ['idcultivo', 'idcultivo.idlote', 'idadmincreador', 'idadmincreador.idusuario2'],
+      relations: [
+        'idcultivo',
+        'idcultivo.idlote',
+        'idadmincreador',
+        'idadmincreador.idusuario2',
+      ],
     });
     if (!tarea) throw new NotFoundException(`Tarea #${idTarea} no encontrada.`);
 
@@ -735,7 +946,9 @@ export class TareasService {
         relations: ['idtarea', 'idempleado'],
       });
       if (!asig || asig.idtarea?.idtarea !== idTarea) {
-        throw new BadRequestException('La asignación no corresponde a esta tarea');
+        throw new BadRequestException(
+          'La asignación no corresponde a esta tarea',
+        );
       }
       idEmpleado = asig.idempleado?.idusuario ?? idEmpleado;
       await this.completar(Number(idasigtarea), at, cosecha);
@@ -753,11 +966,18 @@ export class TareasService {
     const nombreEmpleado = u?.nombre || 'Empleado';
     const tipoactividad = tarea.tipoactividad ?? 'Sin nombre';
     const fechaprogramada = tarea.fechaprogramada ?? '';
-    const lote = [tarea.idcultivo?.idlote?.nombre, tarea.idcultivo?.tipo].filter(Boolean).join(' · ');
+    const lote = [tarea.idcultivo?.idlote?.nombre, tarea.idcultivo?.tipo]
+      .filter(Boolean)
+      .join(' · ');
 
     const pdfBuffer = await this.generarPDF({
-      idtarea: idTarea, tipoactividad, fechaprogramada,
-      nombreEmpleado, lote, observaciones, fotoPath,
+      idtarea: idTarea,
+      tipoactividad,
+      fechaprogramada,
+      nombreEmpleado,
+      lote,
+      observaciones,
+      fotoPath,
     });
 
     // 3. Email del admin que creó la tarea
@@ -766,19 +986,34 @@ export class TareasService {
     // 4. Enviar correo con el PDF adjunto
     if (emailAdmin) {
       await this.mailService.notificarTareaCompletadaConEvidencia(
-        emailAdmin, idTarea, tipoactividad, nombreEmpleado,
-        lote, fechaprogramada, observaciones, pdfBuffer,
+        emailAdmin,
+        idTarea,
+        tipoactividad,
+        nombreEmpleado,
+        lote,
+        fechaprogramada,
+        observaciones,
+        pdfBuffer,
       );
     }
 
     // 5. Guardar la foto en la tarea (si falla, la tarea igual queda completada y el correo ya salió)
     if (fotoPath && this.evidencias) {
       try {
-        await this.evidencias.registrar(this.idfinca, idTarea, TenantContext.requireUser(), fotoPath, {
-          observaciones, idasigtarea: idasigtarea ? Number(idasigtarea) : null,
-        });
+        await this.evidencias.registrar(
+          this.idfinca,
+          idTarea,
+          TenantContext.requireUser(),
+          fotoPath,
+          {
+            observaciones,
+            idasigtarea: idasigtarea ? Number(idasigtarea) : null,
+          },
+        );
       } catch (err: any) {
-        this.logger.warn(`No se pudo guardar la evidencia de la tarea #${idTarea}: ${err?.message}`);
+        this.logger.warn(
+          `No se pudo guardar la evidencia de la tarea #${idTarea}: ${err?.message}`,
+        );
       }
     }
 
@@ -791,55 +1026,133 @@ export class TareasService {
     return { ok: true, message: 'Tarea completada y correo enviado.' };
   }
 
-private async generarPDF({ idtarea, tipoactividad, fechaprogramada, nombreEmpleado, lote, observaciones, fotoPath }: any): Promise<Buffer> {
-  const PDFDocument = (await import('pdfkit')).default;
-  const fs = await import('fs');
+  private async generarPDF({
+    idtarea,
+    tipoactividad,
+    fechaprogramada,
+    nombreEmpleado,
+    lote,
+    observaciones,
+    fotoPath,
+  }: any): Promise<Buffer> {
+    const PDFDocument = (await import('pdfkit')).default;
+    const fs = await import('fs');
 
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 50, size: 'A4' });
-    const chunks: Buffer[] = [];
-    doc.on('data', (c) => chunks.push(c));
-    doc.on('end',  () => resolve(Buffer.concat(chunks)));
-    doc.on('error', reject);
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+      const chunks: Buffer[] = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
 
-    doc.fillColor('#16a34a').fontSize(22).font('Helvetica-Bold').text('AgroSmart', 50, 50);
-    doc.fillColor('#374151').fontSize(13).font('Helvetica').text('Reporte de Tarea Completada', 50, 78);
-    doc.moveTo(50, 98).lineTo(545, 98).strokeColor('#e5e7eb').lineWidth(1).stroke();
+      doc
+        .fillColor('#16a34a')
+        .fontSize(22)
+        .font('Helvetica-Bold')
+        .text('AgroSmart', 50, 50);
+      doc
+        .fillColor('#374151')
+        .fontSize(13)
+        .font('Helvetica')
+        .text('Reporte de Tarea Completada', 50, 78);
+      doc
+        .moveTo(50, 98)
+        .lineTo(545, 98)
+        .strokeColor('#e5e7eb')
+        .lineWidth(1)
+        .stroke();
 
-    const campo = (label: string, valor: string, y: number) => {
-      doc.fillColor('#6b7280').fontSize(10).font('Helvetica').text(label, 50, y);
-      doc.fillColor('#111827').fontSize(11).font('Helvetica-Bold').text(valor || '—', 180, y);
-    };
+      const campo = (label: string, valor: string, y: number) => {
+        doc
+          .fillColor('#6b7280')
+          .fontSize(10)
+          .font('Helvetica')
+          .text(label, 50, y);
+        doc
+          .fillColor('#111827')
+          .fontSize(11)
+          .font('Helvetica-Bold')
+          .text(valor || '—', 180, y);
+      };
 
-    const s = 115; const lh = 22;
-    campo('ID de Tarea',      `#${idtarea}`,          s);
-    campo('Actividad',        tipoactividad,           s + lh);
-    campo('Fecha programada', fechaprogramada,         s + lh * 2);
-    campo('Empleado',         nombreEmpleado,          s + lh * 3);
-    campo('Lote / Cultivo',   lote,                    s + lh * 4);
-    campo('Fecha completada', new Date().toLocaleDateString('es-CO'), s + lh * 5);
+      const s = 115;
+      const lh = 22;
+      campo('ID de Tarea', `#${idtarea}`, s);
+      campo('Actividad', tipoactividad, s + lh);
+      campo('Fecha programada', fechaprogramada, s + lh * 2);
+      campo('Empleado', nombreEmpleado, s + lh * 3);
+      campo('Lote / Cultivo', lote, s + lh * 4);
+      campo(
+        'Fecha completada',
+        new Date().toLocaleDateString('es-CO'),
+        s + lh * 5,
+      );
 
-    const obsY = s + lh * 7;
-    doc.fillColor('#374151').fontSize(12).font('Helvetica-Bold').text('Observaciones', 50, obsY);
-    doc.moveTo(50, obsY + 16).lineTo(545, obsY + 16).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
-    doc.fillColor('#374151').fontSize(11).font('Helvetica').text(observaciones?.trim() || 'Sin observaciones.', 50, obsY + 24, { width: 495 });
+      const obsY = s + lh * 7;
+      doc
+        .fillColor('#374151')
+        .fontSize(12)
+        .font('Helvetica-Bold')
+        .text('Observaciones', 50, obsY);
+      doc
+        .moveTo(50, obsY + 16)
+        .lineTo(545, obsY + 16)
+        .strokeColor('#e5e7eb')
+        .lineWidth(0.5)
+        .stroke();
+      doc
+        .fillColor('#374151')
+        .fontSize(11)
+        .font('Helvetica')
+        .text(observaciones?.trim() || 'Sin observaciones.', 50, obsY + 24, {
+          width: 495,
+        });
 
-    const imgY = (doc as any).y + 28;
-    doc.fillColor('#374151').fontSize(12).font('Helvetica-Bold').text('Evidencia fotográfica', 50, imgY);
-    doc.moveTo(50, imgY + 16).lineTo(545, imgY + 16).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
+      const imgY = (doc as any).y + 28;
+      doc
+        .fillColor('#374151')
+        .fontSize(12)
+        .font('Helvetica-Bold')
+        .text('Evidencia fotográfica', 50, imgY);
+      doc
+        .moveTo(50, imgY + 16)
+        .lineTo(545, imgY + 16)
+        .strokeColor('#e5e7eb')
+        .lineWidth(0.5)
+        .stroke();
 
-    if (fotoPath && fs.existsSync(fotoPath)) {
-      try {
-        doc.image(fotoPath, 50, imgY + 26, { fit: [495, 320], align: 'center' });
-      } catch { doc.fillColor('#9ca3af').fontSize(10).text('No se pudo incrustar la imagen.', 50, imgY + 30); }
-    } else {
-      doc.fillColor('#9ca3af').fontSize(10).font('Helvetica').text('Sin imagen adjunta.', 50, imgY + 30);
-    }
+      if (fotoPath && fs.existsSync(fotoPath)) {
+        try {
+          doc.image(fotoPath, 50, imgY + 26, {
+            fit: [495, 320],
+            align: 'center',
+          });
+        } catch {
+          doc
+            .fillColor('#9ca3af')
+            .fontSize(10)
+            .text('No se pudo incrustar la imagen.', 50, imgY + 30);
+        }
+      } else {
+        doc
+          .fillColor('#9ca3af')
+          .fontSize(10)
+          .font('Helvetica')
+          .text('Sin imagen adjunta.', 50, imgY + 30);
+      }
 
-    doc.fillColor('#9ca3af').fontSize(9).font('Helvetica')
-      .text(`Generado por AgroSmart · ${new Date().toLocaleString('es-CO')}`, 50, doc.page.height - 50, { align: 'center', width: 495 });
+      doc
+        .fillColor('#9ca3af')
+        .fontSize(9)
+        .font('Helvetica')
+        .text(
+          `Generado por AgroSmart · ${new Date().toLocaleString('es-CO')}`,
+          50,
+          doc.page.height - 50,
+          { align: 'center', width: 495 },
+        );
 
-    doc.end();
-  });
-}
+      doc.end();
+    });
+  }
 }

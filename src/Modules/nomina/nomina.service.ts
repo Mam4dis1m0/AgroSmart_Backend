@@ -32,7 +32,9 @@ export class NominaService {
 
   private exigirOnline() {
     if (!this.ds.isInitialized) {
-      throw new ServiceUnavailableException('La nómina requiere conexión a internet');
+      throw new ServiceUnavailableException(
+        'La nómina requiere conexión a internet',
+      );
     }
   }
 
@@ -61,7 +63,10 @@ export class NominaService {
   // ── CU-38 · Calcular nómina del período (queda en BORRADOR para revisión) ──
   async crear(inicio: string, fin: string, idadmin: number, idfinca: number) {
     this.exigirOnline();
-    if (fin < inicio) throw new BadRequestException('fechafin no puede ser anterior a fechainicio');
+    if (fin < inicio)
+      throw new BadRequestException(
+        'fechafin no puede ser anterior a fechainicio',
+      );
 
     const [choque] = await this.ds.query(
       `SELECT idnomina FROM nomina
@@ -70,7 +75,9 @@ export class NominaService {
       [idfinca, inicio, fin],
     );
     if (choque) {
-      throw new ConflictException(`El período se cruza con la nómina #${choque.idnomina} ya confirmada o pagada`);
+      throw new ConflictException(
+        `El período se cruza con la nómina #${choque.idnomina} ya confirmada o pagada`,
+      );
     }
 
     const lineas = await this.lineasDelPeriodo(idfinca, inicio, fin);
@@ -86,9 +93,20 @@ export class NominaService {
       let total = 0;
       const detalle = lineas
         .map((l: any) => {
-          const unidades = unidadesDePago(l.tipopago, inicio, fin, l.diastrabajados);
+          const unidades = unidadesDePago(
+            l.tipopago,
+            inicio,
+            fin,
+            l.diastrabajados,
+          );
           const bruto = brutoDePago(unidades, l.valorpago);
-          return { idempleado: l.idempleado, tipopago: l.tipopago, unidades, valor: l.valorpago, bruto };
+          return {
+            idempleado: l.idempleado,
+            tipopago: l.tipopago,
+            unidades,
+            valor: l.valorpago,
+            bruto,
+          };
         })
         // Quien cobra por día y no trabajó ningún día del período no genera línea
         .filter((d: any) => d.bruto > 0);
@@ -127,7 +145,8 @@ export class NominaService {
          FROM nomina WHERE idnomina = $1 AND idfinca = $2`,
       [idnomina, idfinca],
     );
-    if (!nomina) throw new NotFoundException('Nómina no encontrada en esta finca');
+    if (!nomina)
+      throw new NotFoundException('Nómina no encontrada en esta finca');
 
     const detalles = await this.ds.query(
       `SELECT d.idnominadetalle, d.idempleado, u.primernombre, u.primerapellido,
@@ -142,7 +161,11 @@ export class NominaService {
     return { ...nomina, detalles };
   }
 
-  async ajustarDeducciones(idnominadetalle: number, deducciones: number, idfinca: number) {
+  async ajustarDeducciones(
+    idnominadetalle: number,
+    deducciones: number,
+    idfinca: number,
+  ) {
     this.exigirOnline();
     const idnomina = await this.ds.transaction(async (m) => {
       const [d] = await m.query(
@@ -151,12 +174,19 @@ export class NominaService {
           WHERE d.idnominadetalle = $1 AND n.idfinca = $2 AND n.estado = 'BORRADOR' FOR UPDATE OF d`,
         [idnominadetalle, idfinca],
       );
-      if (!d) throw new NotFoundException('Línea de nómina no encontrada o la nómina ya no es un borrador');
-      if (deducciones > d.bruto) throw new BadRequestException('Las deducciones no pueden superar el pago bruto');
+      if (!d)
+        throw new NotFoundException(
+          'Línea de nómina no encontrada o la nómina ya no es un borrador',
+        );
+      if (deducciones > d.bruto)
+        throw new BadRequestException(
+          'Las deducciones no pueden superar el pago bruto',
+        );
 
-      await m.query(`UPDATE nomina_detalle SET deducciones = $2, neto = $3 WHERE idnominadetalle = $1`, [
-        idnominadetalle, deducciones, r2(d.bruto - deducciones),
-      ]);
+      await m.query(
+        `UPDATE nomina_detalle SET deducciones = $2, neto = $3 WHERE idnominadetalle = $1`,
+        [idnominadetalle, deducciones, r2(d.bruto - deducciones)],
+      );
       await m.query(
         `UPDATE nomina SET total = (SELECT COALESCE(SUM(neto), 0) FROM nomina_detalle WHERE idnomina = $1) WHERE idnomina = $1`,
         [d.idnomina],
@@ -170,7 +200,11 @@ export class NominaService {
    * Corrige los días (o semanas / meses) pagados a un empleado mientras la nómina es un borrador.
    * El bruto se recalcula con el valor acordado; las deducciones ya puestas se conservan.
    */
-  async ajustarUnidades(idnominadetalle: number, unidades: number, idfinca: number) {
+  async ajustarUnidades(
+    idnominadetalle: number,
+    unidades: number,
+    idfinca: number,
+  ) {
     this.exigirOnline();
     const idnomina = await this.ds.transaction(async (m) => {
       const [d] = await m.query(
@@ -179,9 +213,15 @@ export class NominaService {
           WHERE d.idnominadetalle = $1 AND n.idfinca = $2 AND n.estado = 'BORRADOR' FOR UPDATE OF d`,
         [idnominadetalle, idfinca],
       );
-      if (!d) throw new NotFoundException('Línea de nómina no encontrada o la nómina ya no es un borrador');
+      if (!d)
+        throw new NotFoundException(
+          'Línea de nómina no encontrada o la nómina ya no es un borrador',
+        );
       const bruto = brutoDePago(unidades, d.valor);
-      if (d.deducciones > bruto) throw new BadRequestException('Las deducciones ya registradas superan el nuevo pago bruto');
+      if (d.deducciones > bruto)
+        throw new BadRequestException(
+          'Las deducciones ya registradas superan el nuevo pago bruto',
+        );
 
       await m.query(
         `UPDATE nomina_detalle SET jornadas = $2, bruto = $3, neto = $4 WHERE idnominadetalle = $1`,
@@ -205,7 +245,10 @@ export class NominaService {
         [idnomina, idfinca, idadmin],
       ),
     );
-    if (!n) throw new ConflictException('Solo se puede confirmar una nómina en borrador de tu finca');
+    if (!n)
+      throw new ConflictException(
+        'Solo se puede confirmar una nómina en borrador de tu finca',
+      );
     return this.obtener(idnomina, idfinca);
   }
 
@@ -220,7 +263,10 @@ export class NominaService {
           [idnomina, idfinca],
         ),
       );
-      if (!n) throw new ConflictException('Solo se puede pagar una nómina confirmada de tu finca');
+      if (!n)
+        throw new ConflictException(
+          'Solo se puede pagar una nómina confirmada de tu finca',
+        );
       await m.query(
         `UPDATE nomina_detalle SET pagado = true, fechapago = CURRENT_DATE WHERE idnomina = $1`,
         [idnomina],
@@ -237,7 +283,10 @@ export class NominaService {
         [idnomina, idfinca],
       ),
     );
-    if (!borradas.length) throw new ConflictException('Solo se pueden eliminar nóminas en borrador de tu finca');
+    if (!borradas.length)
+      throw new ConflictException(
+        'Solo se pueden eliminar nóminas en borrador de tu finca',
+      );
     return { message: 'Nómina eliminada' };
   }
 }

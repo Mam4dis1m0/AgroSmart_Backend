@@ -16,9 +16,7 @@ describe('CultivosController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [CultivosController],
-      providers: [
-        { provide: CultivosService, useValue: mockCultivosService },
-      ],
+      providers: [{ provide: CultivosService, useValue: mockCultivosService }],
     }).compile();
 
     controller = module.get<CultivosController>(CultivosController);

@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, IsNull, Repository } from 'typeorm';
 import { PlantillaLabor } from '../../Entidades/entities/PlantillaLabor';
@@ -10,7 +14,10 @@ import { filas } from '../../common/sql';
 import { CATEGORIAS, categoriaDeTipo, esCategoria } from './categorias';
 import { hoy, primeraFecha } from './fechas';
 import { costoHoraDeFinca } from '../tareas/mano-obra';
-import { CreatePlantillaDto, UpdatePlantillaDto } from '../../dto/plantilla.dto';
+import {
+  CreatePlantillaDto,
+  UpdatePlantillaDto,
+} from '../../dto/plantilla.dto';
 import { AsignacionSugeridaService } from '../tareas/asignacion-sugerida.service';
 
 export interface ItemPlan {
@@ -44,7 +51,8 @@ export interface ItemPlan {
 export class PlantillasService {
   constructor(
     @InjectRepository(PlantillaLabor) private repo: Repository<PlantillaLabor>,
-    @InjectRepository(PlantillaLaborInsumo) private insumoRepo: Repository<PlantillaLaborInsumo>,
+    @InjectRepository(PlantillaLaborInsumo)
+    private insumoRepo: Repository<PlantillaLaborInsumo>,
     @InjectRepository(Cultivo) private cultivoRepo: Repository<Cultivo>,
     @InjectRepository(Tarea) private tareaRepo: Repository<Tarea>,
     private readonly sugerida: AsignacionSugeridaService,
@@ -64,7 +72,10 @@ export class PlantillasService {
   async listar(categoria?: string) {
     const where: any = { idfinca: this.idfinca };
     if (categoria) where.categoria = categoria;
-    const plantillas = await this.repo.find({ where, order: { categoria: 'ASC', diasoffset: 'ASC', idplantilla: 'ASC' } });
+    const plantillas = await this.repo.find({
+      where,
+      order: { categoria: 'ASC', diasoffset: 'ASC', idplantilla: 'ASC' },
+    });
     return this.conInsumos(plantillas);
   }
 
@@ -72,7 +83,10 @@ export class PlantillasService {
   async catalogo(categoria?: string) {
     const where: any = { idfinca: IsNull() };
     if (categoria) where.categoria = categoria;
-    const plantillas = await this.repo.find({ where, order: { categoria: 'ASC', diasoffset: 'ASC', idplantilla: 'ASC' } });
+    const plantillas = await this.repo.find({
+      where,
+      order: { categoria: 'ASC', diasoffset: 'ASC', idplantilla: 'ASC' },
+    });
     return this.conInsumos(plantillas);
   }
 
@@ -83,7 +97,10 @@ export class PlantillasService {
       .createQueryBuilder('i')
       .where('i.idplantilla IN (:...ids)', { ids })
       .getMany();
-    return plantillas.map((p) => ({ ...p, insumos: ins.filter((i) => i.idplantilla === p.idplantilla) }));
+    return plantillas.map((p) => ({
+      ...p,
+      insumos: ins.filter((i) => i.idplantilla === p.idplantilla),
+    }));
   }
 
   // ── Adopción del catálogo base ────────────────────────────────────────────
@@ -93,24 +110,44 @@ export class PlantillasService {
    * Idempotente: si ya tiene plantillas de esa categoría no vuelve a copiar.
    */
   async adoptar(categoria: string) {
-    if (!esCategoria(categoria)) throw new BadRequestException('Categoría desconocida');
+    if (!esCategoria(categoria))
+      throw new BadRequestException('Categoría desconocida');
     await this.repo.manager.transaction((m) => this.copiarBase(m, categoria));
     return this.listar(categoria);
   }
 
   private async copiarBase(m: EntityManager, categoria: string): Promise<void> {
     const idfinca = this.idfinca;
-    const yaTiene = await m.count(PlantillaLabor, { where: { idfinca, categoria } });
+    const yaTiene = await m.count(PlantillaLabor, {
+      where: { idfinca, categoria },
+    });
     if (yaTiene) return;
 
-    const base = await m.find(PlantillaLabor, { where: { idfinca: IsNull(), categoria, activa: true } });
+    const base = await m.find(PlantillaLabor, {
+      where: { idfinca: IsNull(), categoria, activa: true },
+    });
     for (const b of base) {
       const { idplantilla, idfinca: _f, idplantillabase: _b, ...datos } = b;
-      const copia = await m.save(PlantillaLabor, m.create(PlantillaLabor, { ...datos, idfinca, idplantillabase: idplantilla }));
-      const insumos = await m.find(PlantillaLaborInsumo, { where: { idplantilla } });
+      const copia = await m.save(
+        PlantillaLabor,
+        m.create(PlantillaLabor, {
+          ...datos,
+          idfinca,
+          idplantillabase: idplantilla,
+        }),
+      );
+      const insumos = await m.find(PlantillaLaborInsumo, {
+        where: { idplantilla },
+      });
       for (const i of insumos) {
         const { idplantillainsumo, idplantilla: _p, ...resto } = i;
-        await m.save(PlantillaLaborInsumo, m.create(PlantillaLaborInsumo, { ...resto, idplantilla: copia.idplantilla }));
+        await m.save(
+          PlantillaLaborInsumo,
+          m.create(PlantillaLaborInsumo, {
+            ...resto,
+            idplantilla: copia.idplantilla,
+          }),
+        );
       }
     }
   }
@@ -118,18 +155,28 @@ export class PlantillasService {
   // ── Edición (solo plantillas de la finca) ─────────────────────────────────
 
   async crear(dto: CreatePlantillaDto) {
-    if (!esCategoria(dto.categoria)) throw new BadRequestException('Categoría desconocida');
+    if (!esCategoria(dto.categoria))
+      throw new BadRequestException('Categoría desconocida');
     const { insumos, ...datos } = dto;
-    const saved = await this.repo.save(this.repo.create({ ...datos, idfinca: this.idfinca }));
+    const saved = await this.repo.save(
+      this.repo.create({ ...datos, idfinca: this.idfinca }),
+    );
     await this.guardarInsumos(saved.idplantilla, insumos);
     return (await this.conInsumos([saved]))[0];
   }
 
   async actualizar(id: number, dto: UpdatePlantillaDto) {
-    const p = await this.repo.findOneBy({ idplantilla: id, idfinca: this.idfinca });
-    if (!p) throw new NotFoundException(`Plantilla #${id} no encontrada en esta finca`);
+    const p = await this.repo.findOneBy({
+      idplantilla: id,
+      idfinca: this.idfinca,
+    });
+    if (!p)
+      throw new NotFoundException(
+        `Plantilla #${id} no encontrada en esta finca`,
+      );
     const { insumos, categoria, ...datos } = dto;
-    if (categoria !== undefined && !esCategoria(categoria)) throw new BadRequestException('Categoría desconocida');
+    if (categoria !== undefined && !esCategoria(categoria))
+      throw new BadRequestException('Categoría desconocida');
     Object.assign(p, datos, categoria !== undefined ? { categoria } : {});
     const saved = await this.repo.save(p);
     if (insumos) await this.guardarInsumos(id, insumos);
@@ -140,18 +187,25 @@ export class PlantillasService {
    * Agrega o actualiza (por insumo concreto o por tipo) los insumos sugeridos de la plantilla.
    * No borra filas: para dejar de sugerir un insumo se pone su cantidad en 0 o se desactiva la plantilla.
    */
-  private async guardarInsumos(idplantilla: number, insumos?: CreatePlantillaDto['insumos']) {
+  private async guardarInsumos(
+    idplantilla: number,
+    insumos?: CreatePlantillaDto['insumos'],
+  ) {
     if (!insumos) return;
     const actuales = await this.insumoRepo.find({ where: { idplantilla } });
     for (const i of insumos) {
       const igual = actuales.find((a) =>
-        i.idinsumo ? a.idinsumo === i.idinsumo : !a.idinsumo && a.tipoinsumo === (i.tipoinsumo ?? null),
+        i.idinsumo
+          ? a.idinsumo === i.idinsumo
+          : !a.idinsumo && a.tipoinsumo === (i.tipoinsumo ?? null),
       );
       if (igual) {
         Object.assign(igual, i);
         await this.insumoRepo.save(igual);
       } else {
-        await this.insumoRepo.save(this.insumoRepo.create({ ...i, idplantilla }));
+        await this.insumoRepo.save(
+          this.insumoRepo.create({ ...i, idplantilla }),
+        );
       }
     }
   }
@@ -159,7 +213,10 @@ export class PlantillasService {
   // ── Plan de labores de un cultivo ─────────────────────────────────────────
 
   private async cultivoDeFinca(idcultivo: number): Promise<Cultivo> {
-    const c = await this.cultivoRepo.findOneBy({ idcultivo, idfinca: this.idfinca });
+    const c = await this.cultivoRepo.findOneBy({
+      idcultivo,
+      idfinca: this.idfinca,
+    });
     if (!c) throw new NotFoundException('El cultivo no existe en esta finca');
     return c;
   }
@@ -207,28 +264,59 @@ export class PlantillasService {
    * Horas y costo de una labor para ESTE cultivo. Las plantillas están expresadas para 1 hectárea:
    * se multiplican por las hectáreas del lote. Mano de obra = horas × personas × costo por hora de la finca.
    */
-  private estimar(p: PlantillaLabor, ha: number | null, costoHora: number, costoInsumo1ha: number) {
+  private estimar(
+    p: PlantillaLabor,
+    ha: number | null,
+    costoHora: number,
+    costoInsumo1ha: number,
+  ) {
     const factor = ha ?? 1;
-    const horas = p.horasestimadas === null ? null : Math.round(p.horasestimadas * factor * 100) / 100;
-    const costo = Math.round(((horas ?? 0) * p.numpersonas * costoHora + costoInsumo1ha * factor) * 100) / 100;
+    const horas =
+      p.horasestimadas === null
+        ? null
+        : Math.round(p.horasestimadas * factor * 100) / 100;
+    const costo =
+      Math.round(
+        ((horas ?? 0) * p.numpersonas * costoHora + costoInsumo1ha * factor) *
+          100,
+      ) / 100;
     return { horas, costo };
   }
 
   /** Vista previa: qué tareas se crearían, sin crear nada. */
-  async vistaPrevia(idcultivo: number): Promise<{ categoria: string; desdeBase: boolean; hectareas: number | null; items: ItemPlan[] }> {
+  async vistaPrevia(idcultivo: number): Promise<{
+    categoria: string;
+    desdeBase: boolean;
+    hectareas: number | null;
+    items: ItemPlan[];
+  }> {
     const cultivo = await this.cultivoDeFinca(idcultivo);
     const categoria = this.categoriaDe(cultivo);
 
-    let plantillas = await this.repo.find({ where: { idfinca: this.idfinca, categoria, activa: true } });
+    let plantillas = await this.repo.find({
+      where: { idfinca: this.idfinca, categoria, activa: true },
+    });
     const desdeBase = plantillas.length === 0;
-    if (desdeBase) plantillas = await this.repo.find({ where: { idfinca: IsNull(), categoria, activa: true } });
-    plantillas = plantillas.filter((p) => !p.tipocultivo || p.tipocultivo.toLowerCase() === (cultivo.tipo ?? '').toLowerCase());
-    plantillas.sort((a, b) => a.diasoffset - b.diasoffset || a.idplantilla - b.idplantilla);
+    if (desdeBase)
+      plantillas = await this.repo.find({
+        where: { idfinca: IsNull(), categoria, activa: true },
+      });
+    plantillas = plantillas.filter(
+      (p) =>
+        !p.tipocultivo ||
+        p.tipocultivo.toLowerCase() === (cultivo.tipo ?? '').toLowerCase(),
+    );
+    plantillas.sort(
+      (a, b) => a.diasoffset - b.diasoffset || a.idplantilla - b.idplantilla,
+    );
 
     const ids = plantillas.map((p) => p.idplantilla);
     const [conInsumos, costoHora, costos, existentes, ha] = await Promise.all([
       this.conInsumos(plantillas),
-      costoHoraDeFinca((q, par) => this.repo.manager.query(q, par), this.idfinca),
+      costoHoraDeFinca(
+        (q, par) => this.repo.manager.query(q, par),
+        this.idfinca,
+      ),
       this.costoInsumos(ids),
       this.plantillasYaCreadas(idcultivo),
       this.hectareasDe(idcultivo),
@@ -237,8 +325,15 @@ export class PlantillasService {
     const hoyISO = hoy();
     const items: ItemPlan[] = conInsumos.map((p) => {
       const f = primeraFecha(p, cultivo, hoyISO);
-      const { horas, costo } = this.estimar(p, ha, costoHora, costos.get(p.idplantilla) ?? 0);
-      const ref = desdeBase ? p.idplantilla : p.idplantillabase ?? p.idplantilla;
+      const { horas, costo } = this.estimar(
+        p,
+        ha,
+        costoHora,
+        costos.get(p.idplantilla) ?? 0,
+      );
+      const ref = desdeBase
+        ? p.idplantilla
+        : (p.idplantillabase ?? p.idplantilla);
       return {
         idplantilla: p.idplantilla,
         actividad: p.actividad,
@@ -253,7 +348,10 @@ export class PlantillasService {
         frecuenciadias: p.frecuenciadias,
         modalidadpago: p.modalidadpago,
         costoestimado: costo,
-        insumos: p.insumos.map((i) => ({ tipoinsumo: i.tipoinsumo, unidad: i.unidad })),
+        insumos: p.insumos.map((i) => ({
+          tipoinsumo: i.tipoinsumo,
+          unidad: i.unidad,
+        })),
         pasada: f.pasada,
         ajustada: f.ajustada,
         yaCreada: existentes.has(p.idplantilla) || existentes.has(ref),
@@ -278,7 +376,10 @@ export class PlantillasService {
       ),
     );
     const s = new Set<number>();
-    rows.forEach((r) => { s.add(r.idplantilla); if (r.idplantillabase) s.add(r.idplantillabase); });
+    rows.forEach((r) => {
+      s.add(r.idplantilla);
+      if (r.idplantillabase) s.add(r.idplantillabase);
+    });
     return s;
   }
 
@@ -300,7 +401,9 @@ export class PlantillasService {
 
     const resultado = await this.repo.manager.transaction(async (m) => {
       await this.copiarBase(m, categoria); // la finca pasa a trabajar con su copia
-      const propias = await m.find(PlantillaLabor, { where: { idfinca, categoria, activa: true } });
+      const propias = await m.find(PlantillaLabor, {
+        where: { idfinca, categoria, activa: true },
+      });
       const elegidasPorElCliente = ids?.length ? new Set(ids) : null;
 
       const costos = await this.costoInsumos(propias.map((p) => p.idplantilla));
@@ -309,18 +412,34 @@ export class PlantillasService {
       let omitidas = 0;
 
       for (const p of propias) {
-        if (p.tipocultivo && p.tipocultivo.toLowerCase() !== (cultivo.tipo ?? '').toLowerCase()) continue;
-        const yaExiste = hechas.has(p.idplantilla) || (p.idplantillabase !== null && hechas.has(p.idplantillabase));
+        if (
+          p.tipocultivo &&
+          p.tipocultivo.toLowerCase() !== (cultivo.tipo ?? '').toLowerCase()
+        )
+          continue;
+        const yaExiste =
+          hechas.has(p.idplantilla) ||
+          (p.idplantillabase !== null && hechas.has(p.idplantillabase));
         const f = primeraFecha(p, cultivo, hoyISO);
 
         // El cliente pudo elegir la plantilla base o la copia de la finca
         const elegida = elegidasPorElCliente
-          ? elegidasPorElCliente.has(p.idplantilla) || (p.idplantillabase !== null && elegidasPorElCliente.has(p.idplantillabase))
+          ? elegidasPorElCliente.has(p.idplantilla) ||
+            (p.idplantillabase !== null &&
+              elegidasPorElCliente.has(p.idplantillabase))
           : !f.pasada;
         if (!elegida) continue;
-        if (yaExiste || !f.fecha) { omitidas++; continue; }
+        if (yaExiste || !f.fecha) {
+          omitidas++;
+          continue;
+        }
 
-        const { horas, costo } = this.estimar(p, ha, costoHora, costos.get(p.idplantilla) ?? 0);
+        const { horas, costo } = this.estimar(
+          p,
+          ha,
+          costoHora,
+          costos.get(p.idplantilla) ?? 0,
+        );
         creadas.push(
           await m.save(
             Tarea,
@@ -343,16 +462,30 @@ export class PlantillasService {
           ),
         );
       }
-      return { creadas: creadas.length, omitidas, tareas: creadas.map((t) => ({ idtarea: t.idtarea, tipoactividad: t.tipoactividad, fechaprogramada: t.fechaprogramada })) };
+      return {
+        creadas: creadas.length,
+        omitidas,
+        tareas: creadas.map((t) => ({
+          idtarea: t.idtarea,
+          tipoactividad: t.tipoactividad,
+          fechaprogramada: t.fechaprogramada,
+        })),
+      };
     });
 
     // Modo automático: las tareas nacen ya asignadas (fuera de la transacción: no debe impedir crear el plan)
     let asignadas = 0;
-    if (resultado.tareas.length && (await this.sugerida.modoAsignacion(idfinca)) === 'automatica') {
+    if (
+      resultado.tareas.length &&
+      (await this.sugerida.modoAsignacion(idfinca)) === 'automatica'
+    ) {
       for (const t of resultado.tareas) {
         try {
-          if (await this.sugerida.asignarAutomatico(idfinca, t.idtarea, admin)) asignadas++;
-        } catch { /* queda sin asignar; el admin la ve pendiente */ }
+          if (await this.sugerida.asignarAutomatico(idfinca, t.idtarea, admin))
+            asignadas++;
+        } catch {
+          /* queda sin asignar; el admin la ve pendiente */
+        }
       }
     }
     return { ...resultado, asignadas };

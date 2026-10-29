@@ -68,14 +68,24 @@ export class MarketplaceController {
   @Get('listados/:id')
   @Roles('admin', 'empleado', 'comprador')
   @SinFinca()
-  detalle(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+  detalle(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+  ) {
     return this.service.detalle(id, user);
   }
 
   @Put('listados/:id')
   @Roles('admin')
-  actualizarListado(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateListadoDto) {
-    return this.service.actualizarListado(id, dto, TenantContext.requireFinca());
+  actualizarListado(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateListadoDto,
+  ) {
+    return this.service.actualizarListado(
+      id,
+      dto,
+      TenantContext.requireFinca(),
+    );
   }
 
   @Delete('listados/:id')
@@ -87,7 +97,10 @@ export class MarketplaceController {
   // CREAR LISTADO DESTACADO (Upsell)
   @Post('listados/:id/destacar')
   @Roles('admin')
-  destacar(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+  destacar(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+  ) {
     return this.service.destacar(id, user, TenantContext.requireFinca());
   }
 
@@ -134,7 +147,10 @@ export class MarketplaceController {
   @Patch('ordenes/:id/cancelar')
   @Roles('admin', 'comprador')
   @SinFinca()
-  cancelar(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+  cancelar(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+  ) {
     return this.service.cancelarOrden(id, user);
   }
 
@@ -163,7 +179,10 @@ export class MarketplaceController {
   @Delete('carrito/:idlistado')
   @Roles('admin', 'comprador')
   @SinFinca()
-  quitarDelCarrito(@Param('idlistado', ParseIntPipe) idlistado: number, @CurrentUser() user: AuthUser) {
+  quitarDelCarrito(
+    @Param('idlistado', ParseIntPipe) idlistado: number,
+    @CurrentUser() user: AuthUser,
+  ) {
     return this.service.quitarDelCarrito(idlistado, user);
   }
 
@@ -177,14 +196,20 @@ export class MarketplaceController {
   @Post('wishlist')
   @Roles('admin', 'comprador')
   @SinFinca()
-  guardarEnWishlist(@Body() dto: WishlistItemDto, @CurrentUser() user: AuthUser) {
+  guardarEnWishlist(
+    @Body() dto: WishlistItemDto,
+    @CurrentUser() user: AuthUser,
+  ) {
     return this.service.guardarEnWishlist(dto.idlistado, user);
   }
 
   @Delete('wishlist/:idlistado')
   @Roles('admin', 'comprador')
   @SinFinca()
-  quitarDeWishlist(@Param('idlistado', ParseIntPipe) idlistado: number, @CurrentUser() user: AuthUser) {
+  quitarDeWishlist(
+    @Param('idlistado', ParseIntPipe) idlistado: number,
+    @CurrentUser() user: AuthUser,
+  ) {
     return this.service.quitarDeWishlist(idlistado, user);
   }
 }

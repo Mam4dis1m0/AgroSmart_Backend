@@ -12,7 +12,11 @@ import {
 } from '@nestjs/common';
 import { CurrentUser, Roles, SinFinca } from '../../auth/auth.decorators';
 import { AuthUser } from '../../auth/tenant-context';
-import { CrearHiloDto, EnviarMensajeDto, ListarMensajesQueryDto } from '../../dto/mensajeria.dto';
+import {
+  CrearHiloDto,
+  EnviarMensajeDto,
+  ListarMensajesQueryDto,
+} from '../../dto/mensajeria.dto';
 import { MensajeriaService } from './mensajeria.service';
 
 /**
@@ -47,7 +51,10 @@ export class MensajeriaController {
   }
 
   @Get('hilos/:id')
-  detalleHilo(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+  detalleHilo(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+  ) {
     return this.service.detalleHilo(id, user);
   }
 
@@ -71,7 +78,10 @@ export class MensajeriaController {
 
   /** Marca como leídos los mensajes que recibí en este hilo. */
   @Patch('hilos/:id/leidos')
-  marcarLeidos(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+  marcarLeidos(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+  ) {
     return this.service.marcarLeidos(id, user);
   }
 }

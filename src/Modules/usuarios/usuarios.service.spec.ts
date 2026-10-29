@@ -18,8 +18,12 @@ import { DataSource } from 'typeorm';
 import {
   mockCacheService,
   mockOfflineQueueService,
-  mockSyncService, mockMailService,
-  mockTokenService, mockFincasService, mockSesionService, mockDataSource,
+  mockSyncService,
+  mockMailService,
+  mockTokenService,
+  mockFincasService,
+  mockSesionService,
+  mockDataSource,
   createMockRepository,
 } from '../../test/mocks/common-providers.mock';
 
@@ -30,7 +34,14 @@ import {
 jest.mock('bcrypt');
 const mockedBcrypt = bcrypt as jest.Mocked<typeof bcrypt>;
 
-const fincaAdmin = { idfinca: 1, nombre: 'Finca A', ubicacion: null, tipoproduccion: null, rol: 'admin', plan: 'FREEMIUM' };
+const fincaAdmin = {
+  idfinca: 1,
+  nombre: 'Finca A',
+  ubicacion: null,
+  tipoproduccion: null,
+  rol: 'admin',
+  plan: 'FREEMIUM',
+};
 const fincaEmpleado = { ...fincaAdmin, rol: 'empleado' };
 const otraFinca = { ...fincaAdmin, idfinca: 2, nombre: 'Finca B' };
 
@@ -55,10 +66,22 @@ describe('UsuariosService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsuariosService,
-        { provide: getRepositoryToken(Usuario), useValue: mockUsuarioRepository },
-        { provide: getRepositoryToken(Administrador), useValue: mockAdministradorRepository },
-        { provide: getRepositoryToken(Empleado), useValue: mockEmpleadoRepository },
-        { provide: getRepositoryToken(CompradorPerfil), useValue: mockCompradorRepository },
+        {
+          provide: getRepositoryToken(Usuario),
+          useValue: mockUsuarioRepository,
+        },
+        {
+          provide: getRepositoryToken(Administrador),
+          useValue: mockAdministradorRepository,
+        },
+        {
+          provide: getRepositoryToken(Empleado),
+          useValue: mockEmpleadoRepository,
+        },
+        {
+          provide: getRepositoryToken(CompradorPerfil),
+          useValue: mockCompradorRepository,
+        },
         { provide: CacheService, useValue: mockCacheService },
         { provide: OfflineQueueService, useValue: mockOfflineQueueService },
         { provide: SyncService, useValue: mockSyncService },
@@ -142,13 +165,18 @@ describe('UsuariosService', () => {
       usuarioConHash(usuarioMock);
       mockedBcrypt.compare.mockResolvedValue(true as never);
       mockAdministradorRepository.findOneBy.mockResolvedValue({ idusuario: 1 });
-      mockFincasService.listarDeUsuario.mockResolvedValue([fincaAdmin, otraFinca]);
+      mockFincasService.listarDeUsuario.mockResolvedValue([
+        fincaAdmin,
+        otraFinca,
+      ]);
 
       const result = await service.login('admin@agrosmart.com', 'clave123');
 
       expect(result.idfinca).toBeNull();
       expect(result.requiereSeleccionFinca).toBe(true);
-      expect(mockTokenService.sign).toHaveBeenCalledWith(expect.objectContaining({ idfinca: null }));
+      expect(mockTokenService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ idfinca: null }),
+      );
     });
 
     it('el comprador externo entra sin finca y no se consultan fincas (RNF-20)', async () => {
@@ -169,7 +197,9 @@ describe('UsuariosService', () => {
       mockSyncService.isOnline.mockResolvedValue(true);
       usuarioConHash(null);
 
-      await expect(service.login('nadie@x.com', 'clave123')).rejects.toThrow(UnauthorizedException);
+      await expect(service.login('nadie@x.com', 'clave123')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('rechaza con UnauthorizedException si la contraseña es incorrecta', async () => {
@@ -177,18 +207,24 @@ describe('UsuariosService', () => {
       usuarioConHash(usuarioMock);
       mockedBcrypt.compare.mockResolvedValue(false as never); // contraseña no coincide
 
-      await expect(service.login('admin@agrosmart.com', 'claveMala')).rejects.toThrow(UnauthorizedException);
+      await expect(
+        service.login('admin@agrosmart.com', 'claveMala'),
+      ).rejects.toThrow(UnauthorizedException);
     });
 
     it('usuario inexistente y contraseña errónea dan el MISMO mensaje (no revela qué correos existen)', async () => {
       mockSyncService.isOnline.mockResolvedValue(true);
 
       usuarioConHash(null);
-      const inexistente = await service.login('nadie@x.com', 'x').catch((e) => e.message);
+      const inexistente = await service
+        .login('nadie@x.com', 'x')
+        .catch((e) => e.message);
 
       usuarioConHash(usuarioMock);
       mockedBcrypt.compare.mockResolvedValue(false as never);
-      const claveMala = await service.login('admin@agrosmart.com', 'x').catch((e) => e.message);
+      const claveMala = await service
+        .login('admin@agrosmart.com', 'x')
+        .catch((e) => e.message);
 
       expect(inexistente).toBe(claveMala);
     });
@@ -198,7 +234,9 @@ describe('UsuariosService', () => {
       usuarioConHash({ ...usuarioMock, activo: false });
       mockedBcrypt.compare.mockResolvedValue(true as never);
 
-      await expect(service.login('admin@agrosmart.com', 'clave123')).rejects.toThrow(/no está activa/);
+      await expect(
+        service.login('admin@agrosmart.com', 'clave123'),
+      ).rejects.toThrow(/no está activa/);
       expect(mockTokenService.sign).not.toHaveBeenCalled();
     });
 
@@ -216,7 +254,10 @@ describe('UsuariosService', () => {
       });
       mockedBcrypt.compare.mockResolvedValue(true as never);
 
-      const result: any = await service.login('admin@agrosmart.com', 'clave123');
+      const result: any = await service.login(
+        'admin@agrosmart.com',
+        'clave123',
+      );
 
       expect(result._offline).toBe(true);
       expect(result.usuario.role).toBe('admin');
@@ -229,7 +270,9 @@ describe('UsuariosService', () => {
       mockSyncService.isOnline.mockResolvedValue(false);
       mockCacheService.get.mockReturnValue(null);
 
-      await expect(service.login('nuevo@x.com', 'clave123')).rejects.toThrow(UnauthorizedException);
+      await expect(service.login('nuevo@x.com', 'clave123')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 
@@ -240,7 +283,10 @@ describe('UsuariosService', () => {
     it('no permite auto-registrarse como empleado: exige que lo cree un administrador', async () => {
       await expect(
         service.registrar({
-          primernombre: 'Ana', email: 'ana@x.com', contrasena: 'secreta1', role: 'empleado',
+          primernombre: 'Ana',
+          email: 'ana@x.com',
+          contrasena: 'secreta1',
+          role: 'empleado',
         } as any),
       ).rejects.toThrow(UnauthorizedException);
     });
@@ -248,7 +294,10 @@ describe('UsuariosService', () => {
     it('un administrador exige apellido y cédula (RF-01)', async () => {
       await expect(
         service.registrar({
-          primernombre: 'Ana', email: 'ana@x.com', contrasena: 'secreta1', role: 'admin',
+          primernombre: 'Ana',
+          email: 'ana@x.com',
+          contrasena: 'secreta1',
+          role: 'admin',
         } as any),
       ).rejects.toThrow(/cedula/);
     });

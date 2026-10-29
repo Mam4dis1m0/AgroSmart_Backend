@@ -68,7 +68,9 @@ export class PlanService {
       return plan;
     } catch (err) {
       if (err instanceof ForbiddenException) throw err;
-      this.logger.warn(`No se pudo leer el plan de la finca ${idfinca}: ${(err as Error).message}`);
+      this.logger.warn(
+        `No se pudo leer el plan de la finca ${idfinca}: ${(err as Error).message}`,
+      );
       return hit?.plan ?? FREEMIUM_RESPALDO;
     }
   }

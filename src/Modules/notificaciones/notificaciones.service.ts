@@ -63,7 +63,10 @@ export class NotificacionesService extends BaseOfflineService<Notificacion> {
       const all = this.cache.get<Notificacion[]>(this.cacheKeyAll()) ?? [];
       return all.filter((n: any) => !n.leida);
     }
-    return this.repo.find({ where: this.visibles({ leida: false }), order: { fecha: 'DESC' } });
+    return this.repo.find({
+      where: this.visibles({ leida: false }),
+      order: { fecha: 'DESC' },
+    });
   }
 
   /** Alta manual (administrador). Las automáticas las crean los demás servicios/triggers. */
@@ -77,8 +80,11 @@ export class NotificacionesService extends BaseOfflineService<Notificacion> {
 
   async marcarLeida(id: number) {
     return this.updateOffline(id, { leida: true }, async () => {
-      const existente = await this.repo.findOne({ where: this.visibles({ idnotificacion: id }) });
-      if (!existente) throw new NotFoundException(`Notificación #${id} no encontrada`);
+      const existente = await this.repo.findOne({
+        where: this.visibles({ idnotificacion: id }),
+      });
+      if (!existente)
+        throw new NotFoundException(`Notificación #${id} no encontrada`);
       await this.repo.update(id, { leida: true });
       return this.repo.findOneBy({ idnotificacion: id });
     });
@@ -89,13 +95,21 @@ export class NotificacionesService extends BaseOfflineService<Notificacion> {
     const online = await this.sync.isOnline();
 
     if (online) {
-      const qb = this.repo.createQueryBuilder().update(Notificacion).set({ leida: true }).where('leida = false');
+      const qb = this.repo
+        .createQueryBuilder()
+        .update(Notificacion)
+        .set({ leida: true })
+        .where('leida = false');
       if (u.rol === 'comprador' || u.idfinca === null) {
         qb.andWhere('idusuariodestino = :u', { u: u.idusuario });
       } else {
-        qb.andWhere('idfinca = :f AND (idusuariodestino IS NULL OR idusuariodestino = :u)', {
-          f: u.idfinca, u: u.idusuario,
-        });
+        qb.andWhere(
+          'idfinca = :f AND (idusuariodestino IS NULL OR idusuariodestino = :u)',
+          {
+            f: u.idfinca,
+            u: u.idusuario,
+          },
+        );
       }
       await qb.execute();
     }
@@ -113,7 +127,10 @@ export class NotificacionesService extends BaseOfflineService<Notificacion> {
         }
       }
     }
-    this.cache.set(this.cacheKeyAll(), previas.map((n) => ({ ...n, leida: true })));
+    this.cache.set(
+      this.cacheKeyAll(),
+      previas.map((n) => ({ ...n, leida: true })),
+    );
     return { message: 'Todas las notificaciones marcadas como leídas' };
   }
 

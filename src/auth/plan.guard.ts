@@ -4,7 +4,12 @@
 // @RequiereFuncion('nomina') (u otra), valida que el plan de la finca activa la incluya.
 // Se consulta la BD (con caché corto), no el token, para que un upgrade aplique de inmediato.
 
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { FUNCION_KEY } from './auth.decorators';
 import { PlanService } from './plan.service';
@@ -31,7 +36,8 @@ export class PlanGuard implements CanActivate {
       throw new ForbiddenException({
         statusCode: 403,
         code: 'PLAN_PREMIUM_REQUERIDO',
-        message: 'Esta función requiere el plan Premium. Actualiza la suscripción de tu finca.',
+        message:
+          'Esta función requiere el plan Premium. Actualiza la suscripción de tu finca.',
         funcion,
       });
     }

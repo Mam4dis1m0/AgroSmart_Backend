@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { v2 as cloudinary } from 'cloudinary';
 import { filas } from '../../common/sql';
@@ -7,6 +12,7 @@ import { AuthUser } from '../../auth/tenant-context';
 export interface Evidencia {
   idevidencia: number;
   idasigtarea: number | null;
+  idusuario: number | null;
   url: string;
   observaciones: string | null;
   fecha: string;
@@ -27,8 +33,15 @@ export class TareaEvidenciaService {
   }
 
   /** La tarea debe ser de la finca y, si quien consulta es empleado, estarle asignada. */
-  private async acceso(idfinca: number, idtarea: number, user: AuthUser): Promise<void> {
-    const [t] = await this.ds.query(`SELECT 1 FROM tarea WHERE idtarea = $1 AND idfinca = $2`, [idtarea, idfinca]);
+  private async acceso(
+    idfinca: number,
+    idtarea: number,
+    user: AuthUser,
+  ): Promise<void> {
+    const [t] = await this.ds.query(
+      `SELECT 1 FROM tarea WHERE idtarea = $1 AND idfinca = $2`,
+      [idtarea, idfinca],
+    );
     if (!t) throw new NotFoundException(`Tarea #${idtarea} no encontrada.`);
     if (user.rol === 'empleado') {
       const [a] = await this.ds.query(
@@ -39,11 +52,15 @@ export class TareaEvidenciaService {
     }
   }
 
-  async listar(idfinca: number, idtarea: number, user: AuthUser): Promise<Evidencia[]> {
+  async listar(
+    idfinca: number,
+    idtarea: number,
+    user: AuthUser,
+  ): Promise<Evidencia[]> {
     await this.acceso(idfinca, idtarea, user);
     return filas<Evidencia>(
       await this.ds.query(
-        `SELECT e.idevidencia, e.idasigtarea, e.url, e.observaciones, e.fecha,
+        `SELECT e.idevidencia, e.idasigtarea, e.idusuario, e.url, e.observaciones, e.fecha,
                 NULLIF(trim(concat_ws(' ', u.primernombre, u.primerapellido)), '') AS autor
            FROM tarea_evidencia e LEFT JOIN usuario u ON u.idusuario = e.idusuario
           WHERE e.idtarea = $1 AND e.idfinca = $2
@@ -53,13 +70,51 @@ export class TareaEvidenciaService {
     );
   }
 
+  /** Elimina una evidencia (Cloudinary y registro). El admin puede borrar cualquiera de la finca; el empleado, solo la suya. */
+  async eliminar(
+    idfinca: number,
+    idtarea: number,
+    idevidencia: number,
+    user: AuthUser,
+  ): Promise<{ ok: boolean }> {
+    await this.acceso(idfinca, idtarea, user);
+    const [e] = await this.ds.query(
+      `SELECT idevidencia, idusuario, url FROM tarea_evidencia WHERE idevidencia = $1 AND idfinca = $2 AND idtarea = $3`,
+      [idevidencia, idfinca, idtarea],
+    );
+    if (!e)
+      throw new NotFoundException(`Evidencia #${idevidencia} no encontrada.`);
+    if (user.rol !== 'admin' && e.idusuario !== user.idusuario) {
+      throw new ForbiddenException('Solo puedes eliminar tus propias fotos');
+    }
+    // Se extrae el public_id de la URL de Cloudinary; si falla el borrado remoto, igual se quita el registro.
+    const m = /\/upload\/(?:v\d+\/)?(.+?)(?:\.[A-Za-z]+)?$/.exec(e.url || '');
+    if (m?.[1]) {
+      try {
+        await cloudinary.uploader.destroy(m[1]);
+      } catch (err) {
+        this.logger.warn(`No se pudo borrar ${m[1]} de Cloudinary: ${err}`);
+      }
+    }
+    await this.ds.query(`DELETE FROM tarea_evidencia WHERE idevidencia = $1`, [
+      idevidencia,
+    ]);
+    this.logger.log(
+      `🗑 Evidencia #${idevidencia} eliminada de la tarea #${idtarea}`,
+    );
+    return { ok: true };
+  }
+
   /** Sube la foto y deja el registro. `ruta` es el archivo temporal recibido (el llamador lo borra). */
   async registrar(
     idfinca: number,
     idtarea: number,
     user: AuthUser,
     ruta: string,
-    opciones: { observaciones?: string | null; idasigtarea?: number | null } = {},
+    opciones: {
+      observaciones?: string | null;
+      idasigtarea?: number | null;
+    } = {},
   ): Promise<Evidencia> {
     await this.acceso(idfinca, idtarea, user);
     const subida = await cloudinary.uploader.upload(ruta, {
@@ -70,10 +125,21 @@ export class TareaEvidenciaService {
       await this.ds.query(
         `INSERT INTO tarea_evidencia (idfinca, idtarea, idasigtarea, idusuario, url, observaciones)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING idevidencia`,
-        [idfinca, idtarea, opciones.idasigtarea ?? null, user.idusuario, subida.secure_url, opciones.observaciones?.trim() || null],
+        [
+          idfinca,
+          idtarea,
+          opciones.idasigtarea ?? null,
+          user.idusuario,
+          subida.secure_url,
+          opciones.observaciones?.trim() || null,
+        ],
       ),
     );
-    this.logger.log(`📷 Evidencia #${e.idevidencia} guardada para la tarea #${idtarea}`);
-    return (await this.listar(idfinca, idtarea, user)).find((x) => x.idevidencia === e.idevidencia)!;
+    this.logger.log(
+      `📷 Evidencia #${e.idevidencia} guardada para la tarea #${idtarea}`,
+    );
+    return (await this.listar(idfinca, idtarea, user)).find(
+      (x) => x.idevidencia === e.idevidencia,
+    )!;
   }
 }

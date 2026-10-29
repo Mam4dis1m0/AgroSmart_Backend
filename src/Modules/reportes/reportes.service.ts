@@ -20,15 +20,24 @@ export class ReportesService {
 
   private exigirOnline() {
     if (!this.ds.isInitialized) {
-      throw new ServiceUnavailableException('Los reportes requieren conexión a internet');
+      throw new ServiceUnavailableException(
+        'Los reportes requieren conexión a internet',
+      );
     }
   }
 
   // ── CU-39 ─────────────────────────────────────────────────────────────────
-  async costosPorCultivo(idfinca: number, desde?: string, hasta?: string): Promise<Fila[]> {
+  async costosPorCultivo(
+    idfinca: number,
+    desde?: string,
+    hasta?: string,
+  ): Promise<Fila[]> {
     this.exigirOnline();
     // Mano de obra = horas trabajadas en las tareas × costo promedio por hora de la finca (no depende del pago de cada persona)
-    const costoHora = await costoHoraDeFinca((q, p) => this.ds.query(q, p), idfinca);
+    const costoHora = await costoHoraDeFinca(
+      (q, p) => this.ds.query(q, p),
+      idfinca,
+    );
     return this.ds.query(
       `WITH ins AS (
          SELECT t.idcultivo,
@@ -99,7 +108,16 @@ export class ReportesService {
          ORDER BY fecha DESC`,
         [idfinca, desde ?? null, hasta ?? null],
       );
-      return { nombre: `gastos_${hoy}.csv`, csv: this.toCsv(filas, ['fecha', 'concepto', 'detalle', 'cantidad', 'valor']) };
+      return {
+        nombre: `gastos_${hoy}.csv`,
+        csv: this.toCsv(filas, [
+          'fecha',
+          'concepto',
+          'detalle',
+          'cantidad',
+          'valor',
+        ]),
+      };
     }
 
     if (tipo === 'insumos') {
@@ -113,7 +131,16 @@ export class ReportesService {
       );
       return {
         nombre: `insumos_${hoy}.csv`,
-        csv: this.toCsv(filas, ['nombre', 'tipo', 'unidad', 'stock_actual', 'stock_minimo', 'costo_unitario', 'valor_inventario', 'estado']),
+        csv: this.toCsv(filas, [
+          'nombre',
+          'tipo',
+          'unidad',
+          'stock_actual',
+          'stock_minimo',
+          'costo_unitario',
+          'valor_inventario',
+          'estado',
+        ]),
       };
     }
 
@@ -130,7 +157,14 @@ export class ReportesService {
     );
     return {
       nombre: `cultivos_${hoy}.csv`,
-      csv: this.toCsv(filas, ['cultivo', 'tipo', 'fecha_siembra', 'fecha_cosecha_estimada', 'cosechado', 'tareas']),
+      csv: this.toCsv(filas, [
+        'cultivo',
+        'tipo',
+        'fecha_siembra',
+        'fecha_cosecha_estimada',
+        'cosechado',
+        'tareas',
+      ]),
     };
   }
 
@@ -143,7 +177,10 @@ export class ReportesService {
       if (typeof v === 'string' && /^[=+\-@]/.test(s)) s = `'${s}`;
       return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const lineas = [columnas.join(';'), ...filas.map((f) => columnas.map((c) => celda(f[c])).join(';'))];
+    const lineas = [
+      columnas.join(';'),
+      ...filas.map((f) => columnas.map((c) => celda(f[c])).join(';')),
+    ];
     return '﻿' + lineas.join('\r\n');
   }
 }

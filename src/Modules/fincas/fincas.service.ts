@@ -41,7 +41,8 @@ export class FincasService {
 
   constructor(
     @InjectRepository(Finca) private readonly fincaRepo: Repository<Finca>,
-    @InjectRepository(FincaUsuario) private readonly miembroRepo: Repository<FincaUsuario>,
+    @InjectRepository(FincaUsuario)
+    private readonly miembroRepo: Repository<FincaUsuario>,
     private readonly ds: DataSource,
     private readonly planes: PlanService,
     private readonly sesiones: SesionService,
@@ -50,7 +51,9 @@ export class FincasService {
 
   private exigirOnline(): void {
     if (!this.ds.isInitialized) {
-      throw new ServiceUnavailableException('Esta operación requiere conexión a internet');
+      throw new ServiceUnavailableException(
+        'Esta operación requiere conexión a internet',
+      );
     }
   }
 
@@ -82,7 +85,11 @@ export class FincasService {
         WHERE f.idpropietario = $1 AND f.activo = true`,
       [user.idusuario],
     );
-    if (!estado.tiene_premium && estado.maxfincas !== null && estado.total >= estado.maxfincas) {
+    if (
+      !estado.tiene_premium &&
+      estado.maxfincas !== null &&
+      estado.total >= estado.maxfincas
+    ) {
       throw new ForbiddenException({
         statusCode: 403,
         code: 'LIMITE_PLAN_FINCAS',
@@ -92,8 +99,13 @@ export class FincasService {
 
     try {
       const finca = await this.ds.transaction(async (m) => {
-        const [plan] = await m.query(`SELECT idplan FROM plan WHERE codigo = 'FREEMIUM'`);
-        if (!plan) throw new BadRequestException('Falta el plan FREEMIUM en la tabla plan (corre la migración)');
+        const [plan] = await m.query(
+          `SELECT idplan FROM plan WHERE codigo = 'FREEMIUM'`,
+        );
+        if (!plan)
+          throw new BadRequestException(
+            'Falta el plan FREEMIUM en la tabla plan (corre la migración)',
+          );
 
         const [creada] = await m.query(
           `INSERT INTO finca (nombre, ubicacion, latitud, longitud, tipoproduccion, idpropietario, idplan)
@@ -130,7 +142,9 @@ export class FincasService {
       return { finca: { ...finca, rol: 'admin', plan: 'FREEMIUM' }, token };
     } catch (err) {
       if (esViolacionUnica(err)) {
-        throw new ConflictException('Ya tienes una finca con ese nombre. Elige otro.');
+        throw new ConflictException(
+          'Ya tienes una finca con ese nombre. Elige otro.',
+        );
       }
       throw err;
     }
@@ -161,7 +175,10 @@ export class FincasService {
 
   // ── Finca activa ──────────────────────────────────────────────────────────
   async detalle(idfinca: number) {
-    const finca = await this.fincaRepo.findOne({ where: { idfinca }, relations: ['plan'] });
+    const finca = await this.fincaRepo.findOne({
+      where: { idfinca },
+      relations: ['plan'],
+    });
     if (!finca) throw new NotFoundException('Finca no encontrada');
     const plan = await this.planes.getPlan(idfinca);
     return { ...finca, planEfectivo: plan };
@@ -172,7 +189,8 @@ export class FincasService {
       const res = await this.fincaRepo.update({ idfinca }, dto as any);
       if (!res.affected) throw new NotFoundException('Finca no encontrada');
     } catch (err) {
-      if (esViolacionUnica(err)) throw new ConflictException('Ya tienes una finca con ese nombre.');
+      if (esViolacionUnica(err))
+        throw new ConflictException('Ya tienes una finca con ese nombre.');
       throw err;
     }
     return this.fincaRepo.findOneBy({ idfinca });
@@ -214,7 +232,11 @@ export class FincasService {
     );
   }
 
-  async esMiembro(idfinca: number, idusuario: number, rol?: 'admin' | 'empleado'): Promise<boolean> {
+  async esMiembro(
+    idfinca: number,
+    idusuario: number,
+    rol?: 'admin' | 'empleado',
+  ): Promise<boolean> {
     const rows = await this.ds.query(
       `SELECT 1 FROM finca_usuario
         WHERE idfinca = $1 AND idusuario = $2 AND activo = true AND ($3::text IS NULL OR rol = $3)`,
@@ -278,17 +300,31 @@ export class FincasService {
     const finca = await this.fincaRepo.findOneBy({ idfinca });
     if (!finca) throw new NotFoundException('Finca no encontrada');
     if (finca.idpropietario === idusuario) {
-      throw new ForbiddenException('No se puede remover al propietario de la finca');
+      throw new ForbiddenException(
+        'No se puede remover al propietario de la finca',
+      );
     }
-    const res = await this.miembroRepo.update({ idfinca, idusuario }, { activo: false });
-    if (!res.affected) throw new NotFoundException('El usuario no pertenece a esta finca');
+    const res = await this.miembroRepo.update(
+      { idfinca, idusuario },
+      { activo: false },
+    );
+    if (!res.affected)
+      throw new NotFoundException('El usuario no pertenece a esta finca');
     this.sesiones.invalidar(idusuario);
   }
 
-  async cambiarEstadoMiembro(idfinca: number, idusuario: number, activo: boolean): Promise<void> {
+  async cambiarEstadoMiembro(
+    idfinca: number,
+    idusuario: number,
+    activo: boolean,
+  ): Promise<void> {
     if (!activo) return this.quitarMiembro(idfinca, idusuario);
-    const res = await this.miembroRepo.update({ idfinca, idusuario }, { activo: true });
-    if (!res.affected) throw new NotFoundException('El usuario no pertenece a esta finca');
+    const res = await this.miembroRepo.update(
+      { idfinca, idusuario },
+      { activo: true },
+    );
+    if (!res.affected)
+      throw new NotFoundException('El usuario no pertenece a esta finca');
     this.sesiones.invalidar(idusuario);
   }
 
@@ -305,7 +341,10 @@ export class FincasService {
   }
 
   /** Atajo para servicios que solo necesitan los ids de las filas. */
-  async idsDeMiembros(idfinca: number, rol: 'admin' | 'empleado'): Promise<number[]> {
+  async idsDeMiembros(
+    idfinca: number,
+    rol: 'admin' | 'empleado',
+  ): Promise<number[]> {
     const rows = filas<{ idusuario: number }>(
       await this.ds.query(
         `SELECT idusuario FROM finca_usuario WHERE idfinca = $1 AND rol = $2 AND activo = true`,

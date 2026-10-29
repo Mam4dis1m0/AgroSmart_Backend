@@ -40,18 +40,27 @@ export class AsignacionSugeridaService {
 
   async modoAsignacion(idfinca: number): Promise<string> {
     const [f] = filas<{ modo: string }>(
-      await this.ds.query(`SELECT modoasignacion AS modo FROM finca WHERE idfinca = $1`, [idfinca]),
+      await this.ds.query(
+        `SELECT modoasignacion AS modo FROM finca WHERE idfinca = $1`,
+        [idfinca],
+      ),
     );
     return f?.modo ?? 'sugerida';
   }
 
   async cambiarModo(idfinca: number, modo: string): Promise<string> {
-    await this.ds.query(`UPDATE finca SET modoasignacion = $2 WHERE idfinca = $1`, [idfinca, modo]);
+    await this.ds.query(
+      `UPDATE finca SET modoasignacion = $2 WHERE idfinca = $1`,
+      [idfinca, modo],
+    );
     return modo;
   }
 
   /** Empleados activos de la finca con su situación frente a esta tarea. */
-  private async candidatos(idfinca: number, idtarea: number): Promise<{ lista: Candidato[]; numpersonas: number }> {
+  private async candidatos(
+    idfinca: number,
+    idtarea: number,
+  ): Promise<{ lista: Candidato[]; numpersonas: number }> {
     const [t] = filas<{ numpersonas: number }>(
       await this.ds.query(
         `SELECT COALESCE(p.numpersonas, 1) AS numpersonas
@@ -123,7 +132,9 @@ export class AsignacionSugeridaService {
 
     if (c.afinidadactividad > 0) {
       puntaje += Math.min(c.afinidadactividad, 5) * 6;
-      motivos.push(`Ha hecho esta labor ${c.afinidadactividad} ${c.afinidadactividad === 1 ? 'vez' : 'veces'}`);
+      motivos.push(
+        `Ha hecho esta labor ${c.afinidadactividad} ${c.afinidadactividad === 1 ? 'vez' : 'veces'}`,
+      );
     }
     if (c.afinidadcultivo > 0) {
       puntaje += Math.min(c.afinidadcultivo, 5) * 3;
@@ -136,7 +147,9 @@ export class AsignacionSugeridaService {
 
     return {
       idusuario: c.idusuario,
-      nombre: [c.primernombre, c.primerapellido].filter(Boolean).join(' ') || `Empleado #${c.idusuario}`,
+      nombre:
+        [c.primernombre, c.primerapellido].filter(Boolean).join(' ') ||
+        `Empleado #${c.idusuario}`,
       foto: c.fotoperfil,
       puntaje: Math.max(0, Math.round(puntaje)),
       motivos,
@@ -145,7 +158,10 @@ export class AsignacionSugeridaService {
   }
 
   /** Los mejores candidatos, del más al menos conveniente. */
-  async sugerir(idfinca: number, idtarea: number): Promise<{ numpersonas: number; sugerencias: Sugerencia[] }> {
+  async sugerir(
+    idfinca: number,
+    idtarea: number,
+  ): Promise<{ numpersonas: number; sugerencias: Sugerencia[] }> {
     const { lista, numpersonas } = await this.candidatos(idfinca, idtarea);
     const sugerencias = lista
       .map((c) => AsignacionSugeridaService.puntuar(c))
@@ -159,7 +175,11 @@ export class AsignacionSugeridaService {
    * mejor puntuados hasta cubrir las personas que pide la labor. Notifica dentro de la app.
    * No asigna a quien ya esté ocupado todo el día.
    */
-  async asignarAutomatico(idfinca: number, idtarea: number, idasignador: number | null): Promise<number> {
+  async asignarAutomatico(
+    idfinca: number,
+    idtarea: number,
+    idasignador: number | null,
+  ): Promise<number> {
     const { lista, numpersonas } = await this.candidatos(idfinca, idtarea);
     const elegidos = lista
       .filter((c) => c.horasdia < JORNADA_HORAS)
@@ -168,20 +188,38 @@ export class AsignacionSugeridaService {
       .slice(0, numpersonas);
     if (!elegidos.length) return 0;
 
-    const [t] = filas<{ tipoactividad: string | null; idadmincreador: number | null }>(
-      await this.ds.query(`SELECT tipoactividad, idadmincreador FROM tarea WHERE idtarea = $1 AND idfinca = $2`, [idtarea, idfinca]),
+    const [t] = filas<{
+      tipoactividad: string | null;
+      idadmincreador: number | null;
+    }>(
+      await this.ds.query(
+        `SELECT tipoactividad, idadmincreador FROM tarea WHERE idtarea = $1 AND idfinca = $2`,
+        [idtarea, idfinca],
+      ),
     );
     const asignador = idasignador ?? t?.idadmincreador ?? null;
 
     for (const e of elegidos) {
-      await this.insertarAsignacion(idfinca, idtarea, e.idusuario, asignador, t?.tipoactividad ?? null);
+      await this.insertarAsignacion(
+        idfinca,
+        idtarea,
+        e.idusuario,
+        asignador,
+        t?.tipoactividad ?? null,
+      );
     }
-    this.logger.log(`🤖 Tarea #${idtarea} asignada automáticamente a ${elegidos.map((e) => e.nombre).join(', ')}`);
+    this.logger.log(
+      `🤖 Tarea #${idtarea} asignada automáticamente a ${elegidos.map((e) => e.nombre).join(', ')}`,
+    );
     return elegidos.length;
   }
 
   private async insertarAsignacion(
-    idfinca: number, idtarea: number, idempleado: number, asignador: number | null, actividad: string | null,
+    idfinca: number,
+    idtarea: number,
+    idempleado: number,
+    asignador: number | null,
+    actividad: string | null,
   ) {
     await this.ds.query(
       `INSERT INTO asignacion_tarea (idfinca, idtarea, idempleado, idadminasignador, fechaasignacion, estado, origenasignacion)
@@ -191,7 +229,13 @@ export class AsignacionSugeridaService {
     await this.ds.query(
       `INSERT INTO notificacion (idfinca, idusuariodestino, titulo, mensaje, tipo, tabla_origen, idregistro)
        VALUES ($1, $2, $3, $4, 'tarea_asignada', 'tarea', $5)`,
-      [idfinca, idempleado, 'Nueva tarea asignada', `Te asignaron: ${actividad ?? 'tarea'}`, idtarea],
+      [
+        idfinca,
+        idempleado,
+        'Nueva tarea asignada',
+        `Te asignaron: ${actividad ?? 'tarea'}`,
+        idtarea,
+      ],
     );
   }
 
@@ -200,7 +244,11 @@ export class AsignacionSugeridaService {
    * activo). En modo `manual` no se toca nada; si nadie puede repetir y el modo es `automatica`,
    * se elige con el puntaje normal.
    */
-  async asignarContinuidad(idfinca: number, idtareaAnterior: number, idtareaNueva: number): Promise<number> {
+  async asignarContinuidad(
+    idfinca: number,
+    idtareaAnterior: number,
+    idtareaNueva: number,
+  ): Promise<number> {
     const modo = await this.modoAsignacion(idfinca);
     if (modo === 'manual') return 0;
 
@@ -215,15 +263,32 @@ export class AsignacionSugeridaService {
       ),
     );
     if (previos.length) {
-      const [t] = filas<{ tipoactividad: string | null; idadmincreador: number | null }>(
-        await this.ds.query(`SELECT tipoactividad, idadmincreador FROM tarea WHERE idtarea = $2 AND idfinca = $1`, [idfinca, idtareaNueva]),
+      const [t] = filas<{
+        tipoactividad: string | null;
+        idadmincreador: number | null;
+      }>(
+        await this.ds.query(
+          `SELECT tipoactividad, idadmincreador FROM tarea WHERE idtarea = $2 AND idfinca = $1`,
+          [idfinca, idtareaNueva],
+        ),
       );
       for (const p of previos) {
-        await this.insertarAsignacion(idfinca, idtareaNueva, p.idempleado, t?.idadmincreador ?? null, t?.tipoactividad ?? null);
+        await this.insertarAsignacion(
+          idfinca,
+          idtareaNueva,
+          p.idempleado,
+          t?.idadmincreador ?? null,
+          t?.tipoactividad ?? null,
+        );
       }
-      await this.ds.query(`UPDATE tarea SET estado = 'Asignado' WHERE idtarea = $2 AND idfinca = $1 AND estado = 'Pendiente'`, [idfinca, idtareaNueva]);
+      await this.ds.query(
+        `UPDATE tarea SET estado = 'Asignado' WHERE idtarea = $2 AND idfinca = $1 AND estado = 'Pendiente'`,
+        [idfinca, idtareaNueva],
+      );
       return previos.length;
     }
-    return modo === 'automatica' ? this.asignarAutomatico(idfinca, idtareaNueva, null) : 0;
+    return modo === 'automatica'
+      ? this.asignarAutomatico(idfinca, idtareaNueva, null)
+      : 0;
   }
 }

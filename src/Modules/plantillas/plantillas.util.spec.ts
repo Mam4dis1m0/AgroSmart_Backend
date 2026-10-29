@@ -38,11 +38,18 @@ describe('fechas del plan', () => {
   });
 
   it('la fecha base depende de la plantilla y del cultivo', () => {
-    const c = { fechasiembra: '2026-03-10', fechacosechaestimada: '2026-09-10' };
+    const c = {
+      fechasiembra: '2026-03-10',
+      fechacosechaestimada: '2026-09-10',
+    };
     expect(fechaBase('siembra', c)).toBe('2026-03-10');
     expect(fechaBase('cosecha_estimada', c)).toBe('2026-09-10');
     expect(fechaBase('siembra', { fechasiembra: null })).toBeNull();
-    expect(fechaBase('cosecha_estimada', { fechasiembra: '2026-03-10' })).toBeNull();
-    expect(fechaBase('inicio', { fechasiembra: null })).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(
+      fechaBase('cosecha_estimada', { fechasiembra: '2026-03-10' }),
+    ).toBeNull();
+    expect(fechaBase('inicio', { fechasiembra: null })).toMatch(
+      /^\d{4}-\d{2}-\d{2}$/,
+    );
   });
 });

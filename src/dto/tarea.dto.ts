@@ -1,18 +1,27 @@
 // src/dto/tarea.dto.ts
-import { IsString, IsNumber, IsOptional, IsInt, IsDateString, IsBoolean, IsIn, Min } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsInt,
+  IsDateString,
+  IsBoolean,
+  IsIn,
+  Min,
+} from 'class-validator';
 
 // ── Sin cambios ───────────────────────────────────────────────────────────────
 export class CreateTareaDto {
-  @IsString()  @IsOptional() tipoactividad?: string;
-  @IsString()  @IsOptional() fechaprogramada?: string;
-  @IsNumber()  @IsOptional() tiempototaltarea?: number;
-  @IsString()  @IsOptional() estado?: string;
-  @IsString()  @IsOptional() esrecurrente?: string;
-  @IsNumber()  @IsOptional() frecuenciadias?: number;
-  @IsNumber()  @IsOptional() costototal?: number;
-  @IsNumber()  @IsOptional() costotransporte?: number;
-  @IsNumber()  @IsOptional() idadmincreador?: number;
-  @IsNumber()  @IsOptional() idcultivo?: number;
+  @IsString() @IsOptional() tipoactividad?: string;
+  @IsString() @IsOptional() fechaprogramada?: string;
+  @IsNumber() @IsOptional() tiempototaltarea?: number;
+  @IsString() @IsOptional() estado?: string;
+  @IsString() @IsOptional() esrecurrente?: string;
+  @IsNumber() @IsOptional() frecuenciadias?: number;
+  @IsNumber() @IsOptional() costototal?: number;
+  @IsNumber() @IsOptional() costotransporte?: number;
+  @IsNumber() @IsOptional() idadmincreador?: number;
+  @IsNumber() @IsOptional() idcultivo?: number;
 }
 
 export class UpdateTareaDto extends CreateTareaDto {}
@@ -24,7 +33,7 @@ export class UpdateTareaDto extends CreateTareaDto {}
 export class AsignarTareaDto {
   @IsInt({ message: 'idempleado debe ser un entero.' })
   @Min(1)
-  idempleado: number;                   // empleado que recibirá la tarea
+  idempleado: number; // empleado que recibirá la tarea
 
   // Opcional y se IGNORA: el administrador que asigna es el de la sesión (JWT).
   // Se conserva en el DTO para no romper clientes que aún lo envían.
@@ -35,11 +44,11 @@ export class AsignarTareaDto {
 
   @IsOptional()
   @IsDateString()
-  fechaasignacion?: string;             // si no se envía, se usa la fecha actual
+  fechaasignacion?: string; // si no se envía, se usa la fecha actual
 
   @IsOptional()
   @IsString()
-  estado?: string;                      // default: 'Asignado'
+  estado?: string; // default: 'Asignado'
 
   @IsOptional()
   @IsNumber()

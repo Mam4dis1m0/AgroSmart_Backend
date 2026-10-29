@@ -21,7 +21,10 @@ export const DIAS_MES = 26;
 export type Consulta = (sql: string, params?: any[]) => Promise<any>;
 
 /** Pago equivalente a un día de trabajo. */
-export function pagoDiario(tipo: string | null | undefined, valor: number): number {
+export function pagoDiario(
+  tipo: string | null | undefined,
+  valor: number,
+): number {
   const v = Number(valor) || 0;
   if (tipo === 'semana') return v / DIAS_SEMANA;
   if (tipo === 'mes') return v / DIAS_MES;
@@ -29,7 +32,11 @@ export function pagoDiario(tipo: string | null | undefined, valor: number): numb
 }
 
 /** Horas netas de una jornada: «07:00», «16:00» y 60 min de descanso → 8. */
-export function horasDeJornada(inicio: string, fin: string, descansoMin: number): number {
+export function horasDeJornada(
+  inicio: string,
+  fin: string,
+  descansoMin: number,
+): number {
   const aMin = (t: string) => {
     const [h, m] = (t ?? '').split(':').map(Number);
     return (h || 0) * 60 + (m || 0);
@@ -56,11 +63,20 @@ export interface ManoObra {
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
-const hhmm = (t: string | null | undefined, porDefecto: string) => (t ?? porDefecto).slice(0, 5);
+const hhmm = (t: string | null | undefined, porDefecto: string) =>
+  (t ?? porDefecto).slice(0, 5);
 
 /** Calcula la jornada de la finca y el costo promedio por hora de mano de obra. */
-export async function manoObraDeFinca(consulta: Consulta, idfinca: number): Promise<ManoObra> {
-  const [f] = filas<{ inicio: string; fin: string; descanso: number; personas: number | null }>(
+export async function manoObraDeFinca(
+  consulta: Consulta,
+  idfinca: number,
+): Promise<ManoObra> {
+  const [f] = filas<{
+    inicio: string;
+    fin: string;
+    descanso: number;
+    personas: number | null;
+  }>(
     await consulta(
       `SELECT jornadainicio::text AS inicio, jornadafin::text AS fin, jornadadescanso AS descanso, jornadapersonas AS personas
          FROM finca WHERE idfinca = $1`,
@@ -82,13 +98,24 @@ export async function manoObraDeFinca(consulta: Consulta, idfinca: number): Prom
   const horasJornada = horasDeJornada(inicio, fin, descanso);
 
   const conPago = empleados.filter((e) => e.valorpago > 0);
-  const promedio = conPago.length ? conPago.reduce((a, e) => a + pagoDiario(e.tipopago, e.valorpago), 0) / conPago.length : 0;
-  const personas = f?.personas && f.personas > 0 ? f.personas : empleados.length;
+  const promedio = conPago.length
+    ? conPago.reduce((a, e) => a + pagoDiario(e.tipopago, e.valorpago), 0) /
+      conPago.length
+    : 0;
+  const personas =
+    f?.personas && f.personas > 0 ? f.personas : empleados.length;
   const pagoDiarioEquipo = promedio * personas;
-  const costoHora = personas > 0 && horasJornada > 0 ? pagoDiarioEquipo / (personas * horasJornada) : 0;
+  const costoHora =
+    personas > 0 && horasJornada > 0
+      ? pagoDiarioEquipo / (personas * horasJornada)
+      : 0;
 
   return {
-    inicio, fin, descanso, horasJornada, personas,
+    inicio,
+    fin,
+    descanso,
+    horasJornada,
+    personas,
     personasIndicadas: f?.personas && f.personas > 0 ? f.personas : null,
     empleadosConPago: conPago.length,
     empleadosSinPago: empleados.length - conPago.length,
@@ -99,6 +126,9 @@ export async function manoObraDeFinca(consulta: Consulta, idfinca: number): Prom
 }
 
 /** Atajo: solo el costo por hora. */
-export async function costoHoraDeFinca(consulta: Consulta, idfinca: number): Promise<number> {
+export async function costoHoraDeFinca(
+  consulta: Consulta,
+  idfinca: number,
+): Promise<number> {
   return (await manoObraDeFinca(consulta, idfinca)).costoHora;
 }

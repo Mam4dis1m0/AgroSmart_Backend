@@ -7,10 +7,7 @@ import { Insumo } from '../../Entidades/entities/Insumo';
 import { MailModule } from '../../mail/mail.module';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([Insumo]),
-    MailModule,
-  ],
+  imports: [TypeOrmModule.forFeature([Insumo]), MailModule],
   controllers: [InsumosController],
   providers: [InsumosService],
 })

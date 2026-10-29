@@ -20,7 +20,11 @@ import {
 import { DataSource } from 'typeorm';
 import { AuthUser } from '../../auth/tenant-context';
 import { filas } from '../../common/sql';
-import { CrearHiloDto, EnviarMensajeDto, ListarMensajesQueryDto } from '../../dto/mensajeria.dto';
+import {
+  CrearHiloDto,
+  EnviarMensajeDto,
+  ListarMensajesQueryDto,
+} from '../../dto/mensajeria.dto';
 import { MensajeriaGateway } from './mensajeria.gateway';
 
 const LIMITE_POR_DEFECTO = 50;
@@ -37,7 +41,9 @@ export class MensajeriaService {
 
   private exigirOnline() {
     if (!this.ds.isInitialized) {
-      throw new ServiceUnavailableException('La mensajería requiere conexión a internet');
+      throw new ServiceUnavailableException(
+        'La mensajería requiere conexión a internet',
+      );
     }
   }
 
@@ -63,7 +69,9 @@ export class MensajeriaService {
     );
     if (!l) throw new NotFoundException('El producto no está disponible');
     if (l.idvendedor === user.idusuario) {
-      throw new BadRequestException('No puedes iniciar una conversación contigo mismo');
+      throw new BadRequestException(
+        'No puedes iniciar una conversación contigo mismo',
+      );
     }
 
     if (dto.idorden !== undefined) {
@@ -71,7 +79,8 @@ export class MensajeriaService {
         `SELECT 1 FROM orden_compra WHERE idorden = $1 AND idlistado = $2 AND idcomprador = $3`,
         [dto.idorden, dto.idlistado, user.idusuario],
       );
-      if (!orden) throw new BadRequestException('Esa orden no corresponde a esta oferta');
+      if (!orden)
+        throw new BadRequestException('Esa orden no corresponde a esta oferta');
     }
 
     // Idempotente: si ya existía, solo enlaza la orden en caso de que aún no tuviera una
@@ -107,7 +116,11 @@ export class MensajeriaService {
    * El teléfono SOLO se devuelve en el detalle de un hilo (idhilo != null): lo usa la app
    * para enviar mensajes por SMS cuando no hay internet.
    */
-  private resumenHilos(user: AuthUser, idhilo: number | null, soloConMensajes: boolean) {
+  private resumenHilos(
+    user: AuthUser,
+    idhilo: number | null,
+    soloConMensajes: boolean,
+  ) {
     return this.ds.query(
       `SELECT h.idhilo, h.idlistado, h.idorden, h.ultimo_mensaje_at AS "ultimoMensajeAt",
               CASE WHEN h.idcomprador = $1 THEN 'comprador' ELSE 'vendedor' END AS "miRol",
@@ -144,7 +157,13 @@ export class MensajeriaService {
       [idhilo, user.idusuario],
     );
     if (!h) throw new NotFoundException('Conversación no encontrada');
-    return h as { idhilo: number; idcomprador: number; idvendedor: number; idfinca: number; titulo: string };
+    return h as {
+      idhilo: number;
+      idcomprador: number;
+      idvendedor: number;
+      idfinca: number;
+      titulo: string;
+    };
   }
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -152,7 +171,11 @@ export class MensajeriaService {
   // ═════════════════════════════════════════════════════════════════════════
 
   /** Devuelve siempre en orden cronológico (el más antiguo primero). */
-  async listarMensajes(idhilo: number, q: ListarMensajesQueryDto, user: AuthUser) {
+  async listarMensajes(
+    idhilo: number,
+    q: ListarMensajesQueryDto,
+    user: AuthUser,
+  ) {
     this.exigirOnline();
     await this.hiloDelUsuario(idhilo, user);
     const limite = q.limite ?? LIMITE_POR_DEFECTO;
@@ -180,11 +203,17 @@ export class MensajeriaService {
   async enviar(idhilo: number, dto: EnviarMensajeDto, user: AuthUser) {
     this.exigirOnline();
     const hilo = await this.hiloDelUsuario(idhilo, user);
-    const destino = hilo.idcomprador === user.idusuario ? hilo.idvendedor : hilo.idcomprador;
+    const destino =
+      hilo.idcomprador === user.idusuario ? hilo.idvendedor : hilo.idcomprador;
 
-    const [dest] = await this.ds.query(`SELECT activo FROM usuario WHERE idusuario = $1`, [destino]);
+    const [dest] = await this.ds.query(
+      `SELECT activo FROM usuario WHERE idusuario = $1`,
+      [destino],
+    );
     if (!dest || dest.activo === false) {
-      throw new ConflictException('La otra persona ya no está disponible en la plataforma');
+      throw new ConflictException(
+        'La otra persona ya no está disponible en la plataforma',
+      );
     }
 
     // Guardar mensaje y avanzar el hilo en una sola sentencia (atómica)
@@ -204,7 +233,10 @@ export class MensajeriaService {
 
     // Push a ambos (el emisor puede tener la app abierta en otro dispositivo)
     for (const id of [user.idusuario, destino]) {
-      this.gateway.emitirAUsuario(id, 'mensaje:nuevo', { idhilo, mensaje: this.mapMensaje(row, id) });
+      this.gateway.emitirAUsuario(id, 'mensaje:nuevo', {
+        idhilo,
+        mensaje: this.mapMensaje(row, id),
+      });
     }
     void this.notificar(hilo, destino, user, dto.contenido);
 
@@ -214,7 +246,8 @@ export class MensajeriaService {
   async marcarLeidos(idhilo: number, user: AuthUser) {
     this.exigirOnline();
     const hilo = await this.hiloDelUsuario(idhilo, user);
-    const otro = hilo.idcomprador === user.idusuario ? hilo.idvendedor : hilo.idcomprador;
+    const otro =
+      hilo.idcomprador === user.idusuario ? hilo.idvendedor : hilo.idcomprador;
 
     const leidos = filas<{ idmensaje: string }>(
       await this.ds.query(
@@ -227,7 +260,11 @@ export class MensajeriaService {
 
     if (leidos.length > 0) {
       const hasta = Math.max(...leidos.map((r) => Number(r.idmensaje)));
-      this.gateway.emitirAUsuario(otro, 'mensaje:leido', { idhilo, hasta, por: user.idusuario });
+      this.gateway.emitirAUsuario(otro, 'mensaje:leido', {
+        idhilo,
+        hasta,
+        por: user.idusuario,
+      });
     }
     await this.ds
       .query(
@@ -235,7 +272,9 @@ export class MensajeriaService {
           WHERE tipo = 'MENSAJE_MERCADO' AND idregistro = $1 AND idusuariodestino = $2 AND leida = false`,
         [idhilo, user.idusuario],
       )
-      .catch((err) => this.logger.warn(`No se pudo limpiar la notificación: ${err.message}`));
+      .catch((err) =>
+        this.logger.warn(`No se pudo limpiar la notificación: ${err.message}`),
+      );
 
     return { marcados: leidos.length };
   }
@@ -261,7 +300,12 @@ export class MensajeriaService {
    * mensaje (evita llenar la bandeja). Nunca debe romper el envío.
    */
   private async notificar(
-    hilo: { idhilo: number; idvendedor: number; idfinca: number; titulo: string },
+    hilo: {
+      idhilo: number;
+      idvendedor: number;
+      idfinca: number;
+      titulo: string;
+    },
     destino: number,
     remitente: AuthUser,
     contenido: string,
@@ -272,7 +316,10 @@ export class MensajeriaService {
         [remitente.idusuario],
       );
       const nombre = u?.nombre ?? 'Alguien';
-      const preview = contenido.length > PREVIEW_NOTIFICACION ? `${contenido.slice(0, PREVIEW_NOTIFICACION)}…` : contenido;
+      const preview =
+        contenido.length > PREVIEW_NOTIFICACION
+          ? `${contenido.slice(0, PREVIEW_NOTIFICACION)}…`
+          : contenido;
       // El vendedor ve la notificación dentro de su finca; el comprador no tiene finca
       const idfinca = destino === hilo.idvendedor ? hilo.idfinca : null;
 
@@ -282,10 +329,18 @@ export class MensajeriaService {
           WHERE NOT EXISTS (SELECT 1 FROM notificacion
                              WHERE tipo = 'MENSAJE_MERCADO' AND idregistro = $2::int
                                AND idusuariodestino = $3::int AND leida = false)`,
-        [`${nombre} sobre «${hilo.titulo}»: ${preview}`, hilo.idhilo, destino, 'Nuevo mensaje', idfinca],
+        [
+          `${nombre} sobre «${hilo.titulo}»: ${preview}`,
+          hilo.idhilo,
+          destino,
+          'Nuevo mensaje',
+          idfinca,
+        ],
       );
     } catch (err) {
-      this.logger.warn(`No se pudo crear la notificación del mensaje: ${(err as Error).message}`);
+      this.logger.warn(
+        `No se pudo crear la notificación del mensaje: ${(err as Error).message}`,
+      );
     }
   }
 

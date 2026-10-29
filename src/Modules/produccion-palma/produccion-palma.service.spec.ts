@@ -20,7 +20,10 @@ describe('ProduccionPalmaService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProduccionPalmaService,
-        { provide: getRepositoryToken(ProduccionPalma), useValue: mockProduccionPalmaRepository },
+        {
+          provide: getRepositoryToken(ProduccionPalma),
+          useValue: mockProduccionPalmaRepository,
+        },
         { provide: CacheService, useValue: mockCacheService },
         { provide: OfflineQueueService, useValue: mockOfflineQueueService },
         { provide: SyncService, useValue: mockSyncService },

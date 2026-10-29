@@ -5,45 +5,45 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
-} from "typeorm";
-import { Lote } from "./Lote";
-import { Palma } from "./Palma";
+} from 'typeorm';
+import { Lote } from './Lote';
+import { Palma } from './Palma';
 
-@Index("produccion_palma_pkey", ["idproduccionpalma"], { unique: true })
-@Entity("produccion_palma", { schema: "public" })
+@Index('produccion_palma_pkey', ['idproduccionpalma'], { unique: true })
+@Entity('produccion_palma', { schema: 'public' })
 export class ProduccionPalma {
-  @PrimaryGeneratedColumn({ type: "integer", name: "idproduccionpalma" })
+  @PrimaryGeneratedColumn({ type: 'integer', name: 'idproduccionpalma' })
   idproduccionpalma: number;
 
   /** Tenant (finca dueña del dato) */
-  @Column("integer", { name: "idfinca" })
+  @Column('integer', { name: 'idfinca' })
   idfinca: number;
 
-  @Column("date", { name: "fecharegistro", nullable: true })
+  @Column('date', { name: 'fecharegistro', nullable: true })
   fecharegistro: string | null;
 
-  @Column("integer", { name: "cantidadracimos", nullable: true })
+  @Column('integer', { name: 'cantidadracimos', nullable: true })
   cantidadracimos: number | null;
 
-  @Column("numeric", {
-    name: "pesokg",
+  @Column('numeric', {
+    name: 'pesokg',
     nullable: true,
     precision: 10,
     scale: 2,
   })
   pesokg: number | null;
 
-  @Column("character varying", { name: "calidad", nullable: true, length: 10 })
+  @Column('character varying', { name: 'calidad', nullable: true, length: 10 })
   calidad: string | null;
 
-  @Column("text", { name: "observaciones", nullable: true })
+  @Column('text', { name: 'observaciones', nullable: true })
   observaciones: string | null;
 
   @ManyToOne(() => Lote, (lote) => lote.produccionPalmas)
-  @JoinColumn([{ name: "idlote", referencedColumnName: "idlote" }])
+  @JoinColumn([{ name: 'idlote', referencedColumnName: 'idlote' }])
   idlote: Lote;
 
   @ManyToOne(() => Palma, (palma) => palma.produccionPalmas)
-  @JoinColumn([{ name: "idpalma", referencedColumnName: "idpalma" }])
+  @JoinColumn([{ name: 'idpalma', referencedColumnName: 'idpalma' }])
   idpalma: Palma;
 }

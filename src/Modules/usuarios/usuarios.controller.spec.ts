@@ -16,9 +16,7 @@ describe('UsuariosController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [UsuariosController],
-      providers: [
-        { provide: UsuariosService, useValue: mockUsuariosService },
-      ],
+      providers: [{ provide: UsuariosService, useValue: mockUsuariosService }],
     }).compile();
 
     controller = module.get<UsuariosController>(UsuariosController);

@@ -1,15 +1,27 @@
 import { AsignacionSugeridaService } from './asignacion-sugerida.service';
 
-const cand = (o: Partial<Parameters<typeof AsignacionSugeridaService.puntuar>[0]> = {}) => ({
-  idusuario: 1, primernombre: 'Ana', primerapellido: 'Gómez', fotoperfil: null,
-  horassemana: 0, horasdia: 0, afinidadactividad: 0, afinidadcultivo: 0, continuidad: false, ...o,
+const cand = (
+  o: Partial<Parameters<typeof AsignacionSugeridaService.puntuar>[0]> = {},
+) => ({
+  idusuario: 1,
+  primernombre: 'Ana',
+  primerapellido: 'Gómez',
+  fotoperfil: null,
+  horassemana: 0,
+  horasdia: 0,
+  afinidadactividad: 0,
+  afinidadcultivo: 0,
+  continuidad: false,
+  ...o,
 });
 
 describe('AsignacionSugeridaService.puntuar', () => {
   const p = AsignacionSugeridaService.puntuar;
 
   it('quien no tiene carga puntúa más que quien ya está saturado', () => {
-    expect(p(cand()).puntaje).toBeGreaterThan(p(cand({ horassemana: 20 })).puntaje);
+    expect(p(cand()).puntaje).toBeGreaterThan(
+      p(cand({ horassemana: 20 })).puntaje,
+    );
   });
 
   it('quien ya trabajó ocho horas ese día se penaliza con fuerza y se explica', () => {
@@ -23,7 +35,9 @@ describe('AsignacionSugeridaService.puntuar', () => {
     const base = p(cand()).puntaje;
     expect(p(cand({ afinidadactividad: 2 })).puntaje).toBe(base + 12);
     expect(p(cand({ afinidadactividad: 50 })).puntaje).toBe(base + 30);
-    expect(p(cand({ afinidadcultivo: 1 })).motivos).toContain('Conoce este cultivo');
+    expect(p(cand({ afinidadcultivo: 1 })).motivos).toContain(
+      'Conoce este cultivo',
+    );
   });
 
   it('quien hizo la vez anterior tiene ventaja de continuidad', () => {
@@ -40,6 +54,9 @@ describe('AsignacionSugeridaService.puntuar', () => {
   });
 
   it('sin nombre en el perfil usa un texto de respaldo', () => {
-    expect(p(cand({ primernombre: null, primerapellido: null, idusuario: 7 })).nombre).toBe('Empleado #7');
+    expect(
+      p(cand({ primernombre: null, primerapellido: null, idusuario: 7 }))
+        .nombre,
+    ).toBe('Empleado #7');
   });
 });

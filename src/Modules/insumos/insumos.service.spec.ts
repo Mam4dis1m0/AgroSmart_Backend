@@ -9,9 +9,11 @@ import { MailService } from '../../mail/mail.service';
 import {
   mockCacheService,
   mockOfflineQueueService,
-  mockSyncService, mockMailService,
+  mockSyncService,
+  mockMailService,
   createMockRepository,
-  conSesion, sesionAdmin,
+  conSesion,
+  sesionAdmin,
 } from '../../test/mocks/common-providers.mock';
 
 describe('InsumosService', () => {
@@ -68,7 +70,9 @@ describe('InsumosService', () => {
       // cache.get devuelve null por defecto (mock compartido) → el método
       // usa su propio fallback interno, que es lo que queremos probar aquí.
 
-      await conSesion(sesionAdmin, () => service.update(5, { stockactual: 3 } as any));
+      await conSesion(sesionAdmin, () =>
+        service.update(5, { stockactual: 3 } as any),
+      );
 
       expect(mockMailService.notificarStockBajo).not.toHaveBeenCalled();
       expect(mockOfflineQueueService.add).toHaveBeenCalled();
@@ -77,10 +81,15 @@ describe('InsumosService', () => {
     it('en modo ONLINE, si el stock queda por debajo del mínimo, debe enviar correo al admin', async () => {
       mockSyncService.isOnline.mockResolvedValue(true);
       mockInsumoRepository.findOneBy.mockResolvedValue({ ...entityExistente });
-      mockInsumoRepository.save.mockResolvedValue({ ...entityExistente, stockactual: 3 });
+      mockInsumoRepository.save.mockResolvedValue({
+        ...entityExistente,
+        stockactual: 3,
+      });
       mockInsumoRepository.findOne.mockResolvedValue(insumoConAdminYEmail);
 
-      await conSesion(sesionAdmin, () => service.update(5, { stockactual: 3 } as any));
+      await conSesion(sesionAdmin, () =>
+        service.update(5, { stockactual: 3 } as any),
+      );
 
       expect(mockMailService.notificarStockBajo).toHaveBeenCalledWith(
         'admin@agrosmart.com',
@@ -100,10 +109,15 @@ describe('InsumosService', () => {
       };
       mockSyncService.isOnline.mockResolvedValue(true);
       mockInsumoRepository.findOneBy.mockResolvedValue({ ...entityExistente });
-      mockInsumoRepository.save.mockResolvedValue({ ...entityExistente, stockactual: 80 });
+      mockInsumoRepository.save.mockResolvedValue({
+        ...entityExistente,
+        stockactual: 80,
+      });
       mockInsumoRepository.findOne.mockResolvedValue(insumoStockOk);
 
-      await conSesion(sesionAdmin, () => service.update(5, { stockactual: 80 } as any));
+      await conSesion(sesionAdmin, () =>
+        service.update(5, { stockactual: 80 } as any),
+      );
 
       expect(mockMailService.notificarStockBajo).not.toHaveBeenCalled();
     });
@@ -116,11 +130,16 @@ describe('InsumosService', () => {
       };
       mockSyncService.isOnline.mockResolvedValue(true);
       mockInsumoRepository.findOneBy.mockResolvedValue({ ...entityExistente });
-      mockInsumoRepository.save.mockResolvedValue({ ...entityExistente, stockactual: 3 });
+      mockInsumoRepository.save.mockResolvedValue({
+        ...entityExistente,
+        stockactual: 3,
+      });
       mockInsumoRepository.findOne.mockResolvedValue(insumoSinEmail);
 
       // Si el admin que registró el insumo no tiene correo, se usa el de la sesión; aquí tampoco hay
-      await conSesion({ ...sesionAdmin, email: '' }, () => service.update(5, { stockactual: 3 } as any));
+      await conSesion({ ...sesionAdmin, email: '' }, () =>
+        service.update(5, { stockactual: 3 } as any),
+      );
 
       expect(mockMailService.notificarStockBajo).not.toHaveBeenCalled();
     });
@@ -133,10 +152,15 @@ describe('InsumosService', () => {
       };
       mockSyncService.isOnline.mockResolvedValue(true);
       mockInsumoRepository.findOneBy.mockResolvedValue({ ...entityExistente });
-      mockInsumoRepository.save.mockResolvedValue({ ...entityExistente, stockactual: 3 });
+      mockInsumoRepository.save.mockResolvedValue({
+        ...entityExistente,
+        stockactual: 3,
+      });
       mockInsumoRepository.findOne.mockResolvedValue(insumoSinEmail);
 
-      await conSesion(sesionAdmin, () => service.update(5, { stockactual: 3 } as any));
+      await conSesion(sesionAdmin, () =>
+        service.update(5, { stockactual: 3 } as any),
+      );
 
       expect(mockMailService.notificarStockBajo).toHaveBeenCalledWith(
         'admin@agrosmart.com',
@@ -147,7 +171,9 @@ describe('InsumosService', () => {
     it('rechaza un stock negativo (RNF-04)', async () => {
       mockSyncService.isOnline.mockResolvedValue(true);
       await expect(
-        conSesion(sesionAdmin, () => service.update(5, { stockactual: -1 } as any)),
+        conSesion(sesionAdmin, () =>
+          service.update(5, { stockactual: -1 } as any),
+        ),
       ).rejects.toThrow('stockactual debe ser mayor o igual a cero');
     });
 
@@ -156,10 +182,15 @@ describe('InsumosService', () => {
       mockInsumoRepository.findOneBy.mockResolvedValue(null);
 
       await expect(
-        conSesion(sesionAdmin, () => service.update(999, { stockactual: 5 } as any)),
+        conSesion(sesionAdmin, () =>
+          service.update(999, { stockactual: 5 } as any),
+        ),
       ).rejects.toThrow('no existe en esta finca');
       // La búsqueda se hizo SIEMPRE acotada por la finca activa
-      expect(mockInsumoRepository.findOneBy).toHaveBeenCalledWith({ idinsumo: 999, idfinca: 1 });
+      expect(mockInsumoRepository.findOneBy).toHaveBeenCalledWith({
+        idinsumo: 999,
+        idfinca: 1,
+      });
     });
   });
 });

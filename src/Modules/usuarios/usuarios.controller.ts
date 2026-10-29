@@ -11,7 +11,12 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { UsuariosService } from './usuarios.service';
-import { CurrentUser, Public, Roles, SinFinca } from '../../auth/auth.decorators';
+import {
+  CurrentUser,
+  Public,
+  Roles,
+  SinFinca,
+} from '../../auth/auth.decorators';
 import { AuthUser } from '../../auth/tenant-context';
 import {
   CambiarPasswordDto,
@@ -73,14 +78,24 @@ export class UsuariosController {
   @Put(':id/password')
   @Roles('admin', 'empleado', 'comprador')
   @SinFinca()
-  cambiarPassword(@Param('id', ParseIntPipe) id: number, @Body() dto: CambiarPasswordDto) {
-    return this.usuariosService.cambiarPassword(id, dto.contrasenaActual, dto.contrasenaNueva);
+  cambiarPassword(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CambiarPasswordDto,
+  ) {
+    return this.usuariosService.cambiarPassword(
+      id,
+      dto.contrasenaActual,
+      dto.contrasenaNueva,
+    );
   }
 
   @Put(':id/foto-perfil')
   @Roles('admin', 'empleado', 'comprador')
   @SinFinca()
-  actualizarFotoPerfil(@Param('id', ParseIntPipe) id: number, @Body() dto: FotoPerfilDto) {
+  actualizarFotoPerfil(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: FotoPerfilDto,
+  ) {
     return this.usuariosService.actualizarFotoPerfil(id, dto.imagen);
   }
 
@@ -95,15 +110,24 @@ export class UsuariosController {
   @Put('comprador/ubicacion')
   @Roles('comprador')
   @SinFinca()
-  ubicacionComprador(@CurrentUser() user: AuthUser, @Body() dto: UbicacionCompradorDto) {
-    return this.usuariosService.actualizarUbicacionComprador(user.idusuario, dto);
+  ubicacionComprador(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UbicacionCompradorDto,
+  ) {
+    return this.usuariosService.actualizarUbicacionComprador(
+      user.idusuario,
+      dto,
+    );
   }
 
   // ── Gestión de personal de la finca activa ────────────────────────────────
   // CU-01 · el administrador da de alta a un empleado en SU finca
   @Post('empleados')
   @Roles('admin')
-  registrarEmpleado(@Body() dto: RegistrarEmpleadoDto, @CurrentUser() user: AuthUser) {
+  registrarEmpleado(
+    @Body() dto: RegistrarEmpleadoDto,
+    @CurrentUser() user: AuthUser,
+  ) {
     return this.usuariosService.registrarEmpleado(dto, user);
   }
 

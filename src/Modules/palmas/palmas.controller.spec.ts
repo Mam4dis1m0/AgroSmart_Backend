@@ -16,9 +16,7 @@ describe('PalmasController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PalmasController],
-      providers: [
-        { provide: PalmasService, useValue: mockPalmasService },
-      ],
+      providers: [{ provide: PalmasService, useValue: mockPalmasService }],
     }).compile();
 
     controller = module.get<PalmasController>(PalmasController);

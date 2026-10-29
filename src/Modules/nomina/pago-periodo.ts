@@ -31,7 +31,12 @@ export function mesesDelPeriodo(inicio: string, fin: string): number {
 }
 
 /** Cuántas unidades de pago (días, semanas o meses) corresponden al empleado en el período. */
-export function unidadesDePago(tipo: string, inicio: string, fin: string, diasTrabajados: number): number {
+export function unidadesDePago(
+  tipo: string,
+  inicio: string,
+  fin: string,
+  diasTrabajados: number,
+): number {
   if (tipo === 'semana') return r2(diasDelPeriodo(inicio, fin) / 7);
   if (tipo === 'mes') return mesesDelPeriodo(inicio, fin);
   return diasTrabajados;
@@ -41,4 +46,8 @@ export function brutoDePago(unidades: number, valor: number): number {
   return r2(unidades * valor);
 }
 
-export const ETIQUETA_UNIDAD: Record<string, string> = { dia: 'días', semana: 'semanas', mes: 'meses' };
+export const ETIQUETA_UNIDAD: Record<string, string> = {
+  dia: 'días',
+  semana: 'semanas',
+  mes: 'meses',
+};

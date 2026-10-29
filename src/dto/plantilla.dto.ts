@@ -1,6 +1,16 @@
 import { Type } from 'class-transformer';
 import {
-  IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, ValidateNested,
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  ValidateNested,
 } from 'class-validator';
 
 export class PlantillaInsumoDto {
@@ -26,7 +36,10 @@ export class CreatePlantillaDto {
   @IsOptional() @IsIn(['tiempo', 'fijo']) modalidadpago?: string;
   @IsOptional() @IsBoolean() activa?: boolean;
 
-  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => PlantillaInsumoDto)
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PlantillaInsumoDto)
   insumos?: PlantillaInsumoDto[];
 }
 
@@ -46,11 +59,16 @@ export class UpdatePlantillaDto {
   @IsOptional() @IsIn(['tiempo', 'fijo']) modalidadpago?: string;
   @IsOptional() @IsBoolean() activa?: boolean;
 
-  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => PlantillaInsumoDto)
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PlantillaInsumoDto)
   insumos?: PlantillaInsumoDto[];
 }
 
 export class GenerarPlanDto {
-  @IsOptional() @IsArray() @IsInt({ each: true })
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
   ids?: number[];
 }

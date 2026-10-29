@@ -20,7 +20,10 @@ describe('AsignacionTareaService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AsignacionTareaService,
-        { provide: getRepositoryToken(AsignacionTarea), useValue: mockAsignacionTareaRepository },
+        {
+          provide: getRepositoryToken(AsignacionTarea),
+          useValue: mockAsignacionTareaRepository,
+        },
         { provide: CacheService, useValue: mockCacheService },
         { provide: OfflineQueueService, useValue: mockOfflineQueueService },
         { provide: SyncService, useValue: mockSyncService },
