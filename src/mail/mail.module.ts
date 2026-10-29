@@ -24,7 +24,7 @@ import { MailService } from './mail.service';
           headers: {
             'X-Priority': '1',
             'X-MSMail-Priority': 'High',
-            'Importance': 'High',
+            Importance: 'High',
           },
         },
       }),

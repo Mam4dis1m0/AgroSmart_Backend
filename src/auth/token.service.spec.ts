@@ -4,9 +4,17 @@ import { TokenService } from './token.service';
 import { AuthUser } from './tenant-context';
 
 const SECRET = 'secreto-de-pruebas-con-mas-de-32-caracteres!!';
-const user: AuthUser = { idusuario: 7, email: 'ana@agrosmart.com', rol: 'admin', idfinca: 3 };
+const user: AuthUser = {
+  idusuario: 7,
+  email: 'ana@agrosmart.com',
+  rol: 'admin',
+  idfinca: 3,
+};
 
-const b64 = (o: unknown) => Buffer.from(typeof o === 'string' ? o : JSON.stringify(o)).toString('base64url');
+const b64 = (o: unknown) =>
+  Buffer.from(typeof o === 'string' ? o : JSON.stringify(o)).toString(
+    'base64url',
+  );
 
 describe('TokenService (JWT HS256)', () => {
   const secretoOriginal = process.env.JWT_SECRET;
@@ -35,14 +43,26 @@ describe('TokenService (JWT HS256)', () => {
 
   it('rechaza un token con el payload alterado (p. ej. cambiar de finca)', () => {
     const [h, , f] = svc.sign(user).split('.');
-    const falso = b64({ sub: 7, email: user.email, rol: 'admin', idfinca: 999, iat: 1, exp: 9999999999 });
-    expect(() => svc.verify(`${h}.${falso}.${f}`)).toThrow(UnauthorizedException);
+    const falso = b64({
+      sub: 7,
+      email: user.email,
+      rol: 'admin',
+      idfinca: 999,
+      iat: 1,
+      exp: 9999999999,
+    });
+    expect(() => svc.verify(`${h}.${falso}.${f}`)).toThrow(
+      UnauthorizedException,
+    );
   });
 
   it('rechaza un token firmado con OTRO secreto', () => {
     const token = svc.sign(user);
-    process.env.JWT_SECRET = 'otro-secreto-totalmente-distinto-de-32+caracteres';
-    expect(() => new TokenService().verify(token)).toThrow(UnauthorizedException);
+    process.env.JWT_SECRET =
+      'otro-secreto-totalmente-distinto-de-32+caracteres';
+    expect(() => new TokenService().verify(token)).toThrow(
+      UnauthorizedException,
+    );
   });
 
   it('rechaza alg:none (ataque clásico de JWT sin firma)', () => {
@@ -52,8 +72,13 @@ describe('TokenService (JWT HS256)', () => {
 
   it('rechaza un algoritmo distinto de HS256 aunque la firma sea válida para el cuerpo', () => {
     const cuerpo = `${b64({ alg: 'HS512', typ: 'JWT' })}.${b64({ sub: 7, email: 'x', rol: 'admin', idfinca: 1, exp: 9999999999 })}`;
-    const firma = createHmac('sha256', SECRET).update(cuerpo).digest().toString('base64url');
-    expect(() => svc.verify(`${cuerpo}.${firma}`)).toThrow(UnauthorizedException);
+    const firma = createHmac('sha256', SECRET)
+      .update(cuerpo)
+      .digest()
+      .toString('base64url');
+    expect(() => svc.verify(`${cuerpo}.${firma}`)).toThrow(
+      UnauthorizedException,
+    );
   });
 
   it('rechaza un token expirado', () => {
@@ -69,8 +94,13 @@ describe('TokenService (JWT HS256)', () => {
 
   it('rechaza un rol que no existe en el sistema', () => {
     const cuerpo = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: 7, email: 'x', rol: 'superadmin', idfinca: 1, exp: 9999999999 })}`;
-    const firma = createHmac('sha256', SECRET).update(cuerpo).digest().toString('base64url');
-    expect(() => svc.verify(`${cuerpo}.${firma}`)).toThrow(UnauthorizedException);
+    const firma = createHmac('sha256', SECRET)
+      .update(cuerpo)
+      .digest()
+      .toString('base64url');
+    expect(() => svc.verify(`${cuerpo}.${firma}`)).toThrow(
+      UnauthorizedException,
+    );
   });
 
   it('el servidor no arranca sin JWT_SECRET (o con uno débil)', () => {

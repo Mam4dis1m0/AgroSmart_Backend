@@ -72,8 +72,18 @@ export const createMockRepository = () => ({
 // Multi-tenant / seguridad
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const sesionAdmin: AuthUser = { idusuario: 1, email: 'admin@agrosmart.com', rol: 'admin', idfinca: 1 };
-export const sesionEmpleado: AuthUser = { idusuario: 9, email: 'emp@agrosmart.com', rol: 'empleado', idfinca: 1 };
+export const sesionAdmin: AuthUser = {
+  idusuario: 1,
+  email: 'admin@agrosmart.com',
+  rol: 'admin',
+  idfinca: 1,
+};
+export const sesionEmpleado: AuthUser = {
+  idusuario: 9,
+  email: 'emp@agrosmart.com',
+  rol: 'empleado',
+  idfinca: 1,
+};
 
 /**
  * Ejecuta `fn` dentro de un contexto de petición con este usuario/finca activa, igual que
@@ -88,8 +98,12 @@ export function conSesion<T>(user: AuthUser, fn: () => Promise<T>): Promise<T> {
 
 export const mockPlanService = {
   getPlan: jest.fn().mockResolvedValue({
-    codigo: 'PREMIUM', maxcultivos: null, maxempleados: null, maxfincas: null,
-    comisionmarketplace: 3, funciones: {},
+    codigo: 'PREMIUM',
+    maxcultivos: null,
+    maxempleados: null,
+    maxfincas: null,
+    comisionmarketplace: 3,
+    funciones: {},
   }),
   tieneFuncion: jest.fn().mockResolvedValue(true),
   invalidar: jest.fn(),
@@ -102,6 +116,15 @@ export const mockFincasService = {
   quitarMiembro: jest.fn(),
 };
 
-export const mockTokenService = { sign: jest.fn().mockReturnValue('jwt-de-prueba') };
-export const mockSesionService = { invalidar: jest.fn(), estaActiva: jest.fn().mockResolvedValue(true) };
-export const mockDataSource = { query: jest.fn(), transaction: jest.fn(), isInitialized: true };
+export const mockTokenService = {
+  sign: jest.fn().mockReturnValue('jwt-de-prueba'),
+};
+export const mockSesionService = {
+  invalidar: jest.fn(),
+  estaActiva: jest.fn().mockResolvedValue(true),
+};
+export const mockDataSource = {
+  query: jest.fn(),
+  transaction: jest.fn(),
+  isInitialized: true,
+};

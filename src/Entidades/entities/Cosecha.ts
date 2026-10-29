@@ -1,40 +1,49 @@
-import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
-import { numericTransformer } from "../../common/transformers";
+import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { numericTransformer } from '../../common/transformers';
 
-@Entity("cosecha", { schema: "public" })
+@Entity('cosecha', { schema: 'public' })
 export class Cosecha {
-  @PrimaryGeneratedColumn({ type: "integer", name: "idcosecha" })
+  @PrimaryGeneratedColumn({ type: 'integer', name: 'idcosecha' })
   idcosecha: number;
 
-  @Column("integer", { name: "idfinca" })
+  @Column('integer', { name: 'idfinca' })
   idfinca: number;
 
-  @Column("integer", { name: "idcultivo" })
+  @Column('integer', { name: 'idcultivo' })
   idcultivo: number;
 
-  @Column("date", { name: "fechacosecha" })
+  @Column('date', { name: 'fechacosecha' })
   fechacosecha: string;
 
-  @Column("numeric", { name: "cantidad", precision: 12, scale: 2, transformer: numericTransformer })
+  @Column('numeric', {
+    name: 'cantidad',
+    precision: 12,
+    scale: 2,
+    transformer: numericTransformer,
+  })
   cantidad: number;
 
-  @Column("character varying", { name: "unidad", length: 20, default: () => "'kg'" })
+  @Column('character varying', {
+    name: 'unidad',
+    length: 20,
+    default: () => "'kg'",
+  })
   unidad: string;
 
-  @Column("character varying", { name: "calidad", nullable: true, length: 50 })
+  @Column('character varying', { name: 'calidad', nullable: true, length: 50 })
   calidad: string | null;
 
-  @Column("text", { name: "observaciones", nullable: true })
+  @Column('text', { name: 'observaciones', nullable: true })
   observaciones: string | null;
 
-  @Column("integer", { name: "idadminregistro", nullable: true })
+  @Column('integer', { name: 'idadminregistro', nullable: true })
   idadminregistro: number | null;
 
   /** Tarea de cosecha de la que salió este registro (null si se registró a mano). */
-  @Column("integer", { name: "idtarea", nullable: true })
+  @Column('integer', { name: 'idtarea', nullable: true })
   idtarea: number | null;
 
   /** Empleado que la recolectó (null si no se sabe). */
-  @Column("integer", { name: "idempleado", nullable: true })
+  @Column('integer', { name: 'idempleado', nullable: true })
   idempleado: number | null;
 }

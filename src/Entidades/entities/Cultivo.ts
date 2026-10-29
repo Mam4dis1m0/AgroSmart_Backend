@@ -6,56 +6,60 @@ import {
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
-} from "typeorm";
-import { Administrador } from "./Administrador";
-import { Lote } from "./Lote";
-import { Tarea } from "./Tarea";
+} from 'typeorm';
+import { Administrador } from './Administrador';
+import { Lote } from './Lote';
+import { Tarea } from './Tarea';
 
-@Index("cultivo_pkey", ["idcultivo"], { unique: true })
-@Entity("cultivo", { schema: "public" })
+@Index('cultivo_pkey', ['idcultivo'], { unique: true })
+@Entity('cultivo', { schema: 'public' })
 export class Cultivo {
-  @PrimaryGeneratedColumn({ type: "integer", name: "idcultivo" })
+  @PrimaryGeneratedColumn({ type: 'integer', name: 'idcultivo' })
   idcultivo: number;
 
   /** Tenant (finca dueña del dato) */
-  @Column("integer", { name: "idfinca" })
+  @Column('integer', { name: 'idfinca' })
   idfinca: number;
 
   /** CU-05: tipo de cultivo (maíz, café, palma...) */
-  @Column("character varying", { name: "tipo", nullable: true, length: 100 })
+  @Column('character varying', { name: 'tipo', nullable: true, length: 100 })
   tipo: string | null;
 
   /** Categoría de manejo (ciclo_corto, perenne_arboreo, palma…): decide qué plantilla de labores aplica. */
-  @Column("character varying", { name: "categoria", nullable: true, length: 40 })
+  @Column('character varying', {
+    name: 'categoria',
+    nullable: true,
+    length: 40,
+  })
   categoria: string | null;
 
-  @Column("boolean", { name: "activo", default: () => "true" })
+  @Column('boolean', { name: 'activo', default: () => 'true' })
   activo: boolean;
 
-  @Column("character varying", {
-    name: "nombrelote",
+  @Column('character varying', {
+    name: 'nombrelote',
     nullable: true,
     length: 100,
   })
   nombrelote: string | null;
 
-  @Column("date", { name: "fechasiembra", nullable: true })
+  @Column('date', { name: 'fechasiembra', nullable: true })
   fechasiembra: string | null;
 
-  @Column("date", { name: "fechacosechaestimada", nullable: true })
+  @Column('date', { name: 'fechacosechaestimada', nullable: true })
   fechacosechaestimada: string | null;
 
-  @Column("text", { name: "alertan8n", nullable: true })
+  @Column('text', { name: 'alertan8n', nullable: true })
   alertan8n: string | null;
 
   @ManyToOne(() => Administrador, (administrador) => administrador.cultivos)
   @JoinColumn([
-    { name: "idadminsupervisor", referencedColumnName: "idusuario" },
+    { name: 'idadminsupervisor', referencedColumnName: 'idusuario' },
   ])
   idadminsupervisor: Administrador;
 
   @ManyToOne(() => Lote, (lote) => lote.cultivos)
-  @JoinColumn([{ name: "idlote", referencedColumnName: "idlote" }])
+  @JoinColumn([{ name: 'idlote', referencedColumnName: 'idlote' }])
   idlote: Lote;
 
   @OneToMany(() => Tarea, (tarea) => tarea.idcultivo)

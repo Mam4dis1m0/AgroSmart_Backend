@@ -5,72 +5,72 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
-} from "typeorm";
-import { Empleado } from "./Empleado";
-import { numericTransformer } from "../../common/transformers";
+} from 'typeorm';
+import { Empleado } from './Empleado';
+import { numericTransformer } from '../../common/transformers';
 
-@Index("empleado_cosecha_pkey", ["idempleadocosecha"], { unique: true })
-@Entity("empleado_cosecha", { schema: "public" })
+@Index('empleado_cosecha_pkey', ['idempleadocosecha'], { unique: true })
+@Entity('empleado_cosecha', { schema: 'public' })
 export class EmpleadoCosecha {
-  @PrimaryGeneratedColumn({ type: "integer", name: "idempleadocosecha" })
+  @PrimaryGeneratedColumn({ type: 'integer', name: 'idempleadocosecha' })
   idempleadocosecha: number;
 
   /** Tenant (finca dueña del dato) */
-  @Column("integer", { name: "idfinca" })
+  @Column('integer', { name: 'idfinca' })
   idfinca: number;
 
-  @Column("numeric", {
-    name: "cantidadcosechada",
+  @Column('numeric', {
+    name: 'cantidadcosechada',
     nullable: true,
     precision: 10,
     scale: 2,
     transformer: numericTransformer,
   })
-  cantidadcosechada: number | null;  // ✅
+  cantidadcosechada: number | null; // ✅
 
-  @Column("numeric", {
-    name: "valorunitario",
+  @Column('numeric', {
+    name: 'valorunitario',
     nullable: true,
     precision: 10,
     scale: 2,
     transformer: numericTransformer,
   })
-  valorunitario: number | null;  // ✅
+  valorunitario: number | null; // ✅
 
-  @Column("numeric", {
-    name: "preciobruto",
+  @Column('numeric', {
+    name: 'preciobruto',
     nullable: true,
     precision: 10,
     scale: 2,
     transformer: numericTransformer,
   })
-  preciobruto: number | null;  // ✅
+  preciobruto: number | null; // ✅
 
-  @Column("numeric", {
-    name: "deducciones",
+  @Column('numeric', {
+    name: 'deducciones',
     nullable: true,
     precision: 10,
     scale: 2,
     transformer: numericTransformer,
   })
-  deducciones: number | null;  // ✅
+  deducciones: number | null; // ✅
 
-  @Column("numeric", {
-    name: "precioneto",
+  @Column('numeric', {
+    name: 'precioneto',
     nullable: true,
     precision: 10,
     scale: 2,
     transformer: numericTransformer,
   })
-  precioneto: number | null;  // ✅
+  precioneto: number | null; // ✅
 
-  @Column("date", { name: "fechatrabajo", nullable: true })
+  @Column('date', { name: 'fechatrabajo', nullable: true })
   fechatrabajo: string | null;
 
-  @Column("text", { name: "observaciones", nullable: true })
+  @Column('text', { name: 'observaciones', nullable: true })
   observaciones: string | null;
 
   @ManyToOne(() => Empleado, (empleado) => empleado.empleadoCosechas)
-  @JoinColumn([{ name: "idempleado", referencedColumnName: "idusuario" }])
+  @JoinColumn([{ name: 'idempleado', referencedColumnName: 'idusuario' }])
   idempleado: Empleado;
 }

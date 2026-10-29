@@ -70,18 +70,25 @@ export abstract class BaseOfflineService<T extends ObjectLiteral> {
     where: Record<string, unknown>,
     etiqueta: string,
   ): Promise<void> {
-    const existe = await repo.exist({ where: { ...where, idfinca: this.idfinca } });
+    const existe = await repo.exist({
+      where: { ...where, idfinca: this.idfinca },
+    });
     if (!existe) {
       throw new NotFoundException(`${etiqueta} no existe en esta finca`);
     }
   }
 
   /** UPDATE acotado a la finca activa. Devuelve la fila actualizada o responde 404. */
-  protected async updateEnFinca(id: number | string, data: object): Promise<T | null> {
+  protected async updateEnFinca(
+    id: number | string,
+    data: object,
+  ): Promise<T | null> {
     const where = this.where({ [this.pkField]: id });
     const res = await this.repo.update(where, this.sinFinca(data) as any);
     if (!res.affected) {
-      throw new NotFoundException(`${this.entityName} #${id} no existe en esta finca`);
+      throw new NotFoundException(
+        `${this.entityName} #${id} no existe en esta finca`,
+      );
     }
     return this.repo.findOneBy(where);
   }
@@ -94,7 +101,9 @@ export abstract class BaseOfflineService<T extends ObjectLiteral> {
     try {
       const res = await this.repo.delete(this.where({ [this.pkField]: id }));
       if (!res.affected) {
-        throw new NotFoundException(`${this.entityName} #${id} no existe en esta finca`);
+        throw new NotFoundException(
+          `${this.entityName} #${id} no existe en esta finca`,
+        );
       }
     } catch (err: any) {
       if (err?.code === '23503') {
@@ -114,7 +123,9 @@ export abstract class BaseOfflineService<T extends ObjectLiteral> {
     const u = TenantContext.user();
     if (!u) return 'f0';
     if (u.idfinca === null) return `u${u.idusuario}`;
-    return u.rol === 'empleado' ? `f${u.idfinca}e${u.idusuario}` : `f${u.idfinca}`;
+    return u.rol === 'empleado'
+      ? `f${u.idfinca}e${u.idusuario}`
+      : `f${u.idfinca}`;
   }
 
   protected cacheKeyAll(): string {
@@ -128,7 +139,7 @@ export abstract class BaseOfflineService<T extends ObjectLiteral> {
   /** Reemplaza o inserta un elemento en la lista cacheada */
   protected updateCacheList(item: any): void {
     const all: any[] = this.cache.get<any[]>(this.cacheKeyAll()) ?? [];
-    const idx = all.findIndex(e => e[this.pkField] === item[this.pkField]);
+    const idx = all.findIndex((e) => e[this.pkField] === item[this.pkField]);
     if (idx >= 0) all[idx] = item;
     else all.push(item);
     this.cache.set(this.cacheKeyAll(), all);
@@ -137,8 +148,9 @@ export abstract class BaseOfflineService<T extends ObjectLiteral> {
 
   /** Elimina un elemento de la lista cacheada */
   protected removeCacheItem(id: number): void {
-    const all = (this.cache.get<any[]>(this.cacheKeyAll()) ?? [])
-      .filter(e => e[this.pkField] !== id);
+    const all = (this.cache.get<any[]>(this.cacheKeyAll()) ?? []).filter(
+      (e) => e[this.pkField] !== id,
+    );
     this.cache.set(this.cacheKeyAll(), all);
     this.cache.delete(this.cacheKeyOne(id));
   }
@@ -160,7 +172,10 @@ export abstract class BaseOfflineService<T extends ObjectLiteral> {
 
   // ── findOne genérico ────────────────────────────────────────────────────
 
-  async findOneOffline(id: number, dbQuery: () => Promise<T | null>): Promise<T | null> {
+  async findOneOffline(
+    id: number,
+    dbQuery: () => Promise<T | null>,
+  ): Promise<T | null> {
     const online = await this.sync.isOnline();
 
     if (!online) {
@@ -203,17 +218,24 @@ export abstract class BaseOfflineService<T extends ObjectLiteral> {
       Object.entries(scopedDto).filter(([k]) => k !== this.pkField),
     );
     this.offlineQueue.add(this.entityName, 'CREATE', dtoSinPk);
-    this.logger.log(`📥 ${this.entityName} creado offline (id temporal: ${tempId})`);
+    this.logger.log(
+      `📥 ${this.entityName} creado offline (id temporal: ${tempId})`,
+    );
 
     return {
       ...tempItem,
-      _mensaje: 'Guardado localmente. Se subirá a Supabase cuando haya internet.',
+      _mensaje:
+        'Guardado localmente. Se subirá a Supabase cuando haya internet.',
     };
   }
 
   // ── update genérico ─────────────────────────────────────────────────────
 
-  async updateOffline(id: number, dto: any, dbUpdate: () => Promise<T | any>): Promise<T | any> {
+  async updateOffline(
+    id: number,
+    dto: any,
+    dbUpdate: () => Promise<T | any>,
+  ): Promise<T | any> {
     const online = await this.sync.isOnline();
 
     if (online) {
@@ -224,7 +246,9 @@ export abstract class BaseOfflineService<T extends ObjectLiteral> {
 
     // Modo offline: actualiza caché y encola
     const cambios = this.escopadoPorFinca ? this.sinFinca(dto) : dto;
-    const cached = this.cache.get<any>(this.cacheKeyOne(id)) ?? { [this.pkField]: id };
+    const cached = this.cache.get<any>(this.cacheKeyOne(id)) ?? {
+      [this.pkField]: id,
+    };
     const updated = { ...cached, ...cambios, _pendiente: 'UPDATE' };
     this.updateCacheList(updated);
     // idfinca viaja en la cola: SyncService solo actualiza filas de ESA finca
@@ -239,7 +263,8 @@ export abstract class BaseOfflineService<T extends ObjectLiteral> {
 
     return {
       ...updated,
-      _mensaje: 'Actualizado localmente. Se subirá a Supabase cuando haya internet.',
+      _mensaje:
+        'Actualizado localmente. Se subirá a Supabase cuando haya internet.',
     };
   }
 
@@ -262,10 +287,13 @@ export abstract class BaseOfflineService<T extends ObjectLiteral> {
         ? { [this.pkField]: id, idfinca: TenantContext.idfinca() }
         : { [this.pkField]: id },
     );
-    this.logger.log(`📥 ${this.entityName} #${id} marcado para eliminar offline`);
+    this.logger.log(
+      `📥 ${this.entityName} #${id} marcado para eliminar offline`,
+    );
 
     return {
-      message: 'Eliminado localmente. Se borrará de Supabase cuando haya internet.',
+      message:
+        'Eliminado localmente. Se borrará de Supabase cuando haya internet.',
     };
   }
 }

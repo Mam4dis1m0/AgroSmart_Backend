@@ -10,7 +10,8 @@ import { MailService } from '../../mail/mail.service';
 import {
   mockCacheService,
   mockOfflineQueueService,
-  mockSyncService, mockMailService,
+  mockSyncService,
+  mockMailService,
   createMockRepository,
 } from '../../test/mocks/common-providers.mock';
 
@@ -23,7 +24,10 @@ describe('DetalleTareaService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DetalleTareaService,
-        { provide: getRepositoryToken(DetalleTarea), useValue: mockDetalleTareaRepository },
+        {
+          provide: getRepositoryToken(DetalleTarea),
+          useValue: mockDetalleTareaRepository,
+        },
         { provide: getRepositoryToken(Insumo), useValue: mockInsumoRepository },
         { provide: CacheService, useValue: mockCacheService },
         { provide: OfflineQueueService, useValue: mockOfflineQueueService },

@@ -10,7 +10,7 @@ import { MailModule } from '../../mail/mail.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([DetalleTarea, Insumo]),
-    MailModule,   // para poder inyectar MailService
+    MailModule, // para poder inyectar MailService
   ],
   controllers: [DetalleTareaController],
   providers: [DetalleTareaService],

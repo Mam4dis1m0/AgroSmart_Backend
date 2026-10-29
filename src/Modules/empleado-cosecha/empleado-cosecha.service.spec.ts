@@ -20,7 +20,10 @@ describe('EmpleadoCosechaService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EmpleadoCosechaService,
-        { provide: getRepositoryToken(EmpleadoCosecha), useValue: mockEmpleadoCosechaRepository },
+        {
+          provide: getRepositoryToken(EmpleadoCosecha),
+          useValue: mockEmpleadoCosechaRepository,
+        },
         { provide: CacheService, useValue: mockCacheService },
         { provide: OfflineQueueService, useValue: mockOfflineQueueService },
         { provide: SyncService, useValue: mockSyncService },

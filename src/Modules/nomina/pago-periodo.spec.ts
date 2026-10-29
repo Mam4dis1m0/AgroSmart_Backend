@@ -1,4 +1,9 @@
-import { brutoDePago, diasDelPeriodo, mesesDelPeriodo, unidadesDePago } from './pago-periodo';
+import {
+  brutoDePago,
+  diasDelPeriodo,
+  mesesDelPeriodo,
+  unidadesDePago,
+} from './pago-periodo';
 
 describe('períodos de nómina', () => {
   it('cuenta los días del período con ambos extremos', () => {
@@ -26,11 +31,21 @@ describe('pago por tipo', () => {
 
   it('por semana: el valor de la semana por las semanas del período, sin importar los días trabajados', () => {
     expect(unidadesDePago('semana', '2026-10-05', '2026-10-11', 0)).toBe(1);
-    expect(brutoDePago(unidadesDePago('semana', '2026-10-05', '2026-10-18', 3), 350000)).toBe(700000);
+    expect(
+      brutoDePago(
+        unidadesDePago('semana', '2026-10-05', '2026-10-18', 3),
+        350000,
+      ),
+    ).toBe(700000);
   });
 
   it('por mes: el valor del mes completo aunque haya trabajado pocos días', () => {
-    expect(brutoDePago(unidadesDePago('mes', '2026-10-01', '2026-10-31', 2), 1300000)).toBe(1300000);
+    expect(
+      brutoDePago(
+        unidadesDePago('mes', '2026-10-01', '2026-10-31', 2),
+        1300000,
+      ),
+    ).toBe(1300000);
   });
 
   it('las horas que el empleado reporte no intervienen en el pago', () => {

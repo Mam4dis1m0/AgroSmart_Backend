@@ -1,5 +1,9 @@
 // src/Modules/empleado/empleado.service.ts
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Empleado } from '../../Entidades/entities/Empleado';
@@ -12,8 +16,16 @@ import { FincasService } from '../fincas/fincas.service';
 
 /** Columnas del usuario que se exponen junto al empleado (nunca la contraseña). */
 const COLUMNAS_USUARIO = [
-  'u.idusuario', 'u.primernombre', 'u.segundonombre', 'u.primerapellido', 'u.segundoapellido',
-  'u.email', 'u.telefono', 'u.cedula', 'u.fotoperfil', 'u.activo',
+  'u.idusuario',
+  'u.primernombre',
+  'u.segundonombre',
+  'u.primerapellido',
+  'u.segundoapellido',
+  'u.email',
+  'u.telefono',
+  'u.cedula',
+  'u.fotoperfil',
+  'u.activo',
 ];
 
 @Injectable()
@@ -50,19 +62,28 @@ export class EmpleadoService extends BaseOfflineService<Empleado> {
   }
 
   findOne(id: number) {
-    return this.findOneOffline(id, () => this.deLaFinca().andWhere('e.idusuario = :id', { id }).getOne());
+    return this.findOneOffline(id, () =>
+      this.deLaFinca().andWhere('e.idusuario = :id', { id }).getOne(),
+    );
   }
 
   private validarMontos(data: Partial<Empleado>) {
     for (const [campo, valor] of Object.entries({
-      montoporhora: data.montoporhora, montoporjornal: data.montoporjornal, valorpago: data.valorpago,
+      montoporhora: data.montoporhora,
+      montoporjornal: data.montoporjornal,
+      valorpago: data.valorpago,
     })) {
       if (valor !== undefined && valor !== null && !(Number(valor) >= 0)) {
         throw new BadRequestException(`${campo} debe ser mayor o igual a cero`);
       }
     }
-    if (data.tipopago !== undefined && !['dia', 'semana', 'mes'].includes(data.tipopago)) {
-      throw new BadRequestException('El tipo de pago debe ser dia, semana o mes');
+    if (
+      data.tipopago !== undefined &&
+      !['dia', 'semana', 'mes'].includes(data.tipopago)
+    ) {
+      throw new BadRequestException(
+        'El tipo de pago debe ser dia, semana o mes',
+      );
     }
   }
 
@@ -71,11 +92,18 @@ export class EmpleadoService extends BaseOfflineService<Empleado> {
    * Para crear la cuenta Y el empleado a la vez usa POST /usuarios/empleados.
    */
   create(data: Partial<Empleado>) {
-    if (!data.idusuario) throw new BadRequestException('idusuario es obligatorio');
+    if (!data.idusuario)
+      throw new BadRequestException('idusuario es obligatorio');
     this.validarMontos(data);
     return this.createOffline(data, async () => {
-      await this.fincas.agregarMiembro(this.idfinca, data.idusuario as number, 'empleado');
-      const existente = await this.repo.findOneBy({ idusuario: data.idusuario });
+      await this.fincas.agregarMiembro(
+        this.idfinca,
+        data.idusuario as number,
+        'empleado',
+      );
+      const existente = await this.repo.findOneBy({
+        idusuario: data.idusuario,
+      });
       if (existente) {
         await this.repo.update(data.idusuario as number, {
           montoporhora: data.montoporhora ?? existente.montoporhora,
@@ -86,19 +114,25 @@ export class EmpleadoService extends BaseOfflineService<Empleado> {
       } else {
         await this.repo.save(this.repo.create(data));
       }
-      return this.deLaFinca().andWhere('e.idusuario = :id', { id: data.idusuario }).getOneOrFail();
+      return this.deLaFinca()
+        .andWhere('e.idusuario = :id', { id: data.idusuario })
+        .getOneOrFail();
     });
   }
 
   update(id: number, data: Partial<Empleado>) {
     this.validarMontos(data);
     const cambios = {
-      montoporhora: data.montoporhora, montoporjornal: data.montoporjornal,
-      tipopago: data.tipopago, valorpago: data.valorpago,
+      montoporhora: data.montoporhora,
+      montoporjornal: data.montoporjornal,
+      tipopago: data.tipopago,
+      valorpago: data.valorpago,
     };
     return this.updateOffline(id, cambios, async () => {
       if (!(await this.fincas.esMiembro(this.idfinca, id, 'empleado'))) {
-        throw new NotFoundException(`empleado #${id} no pertenece a esta finca`);
+        throw new NotFoundException(
+          `empleado #${id} no pertenece a esta finca`,
+        );
       }
       await this.repo.update(id, cambios);
       return this.deLaFinca().andWhere('e.idusuario = :id', { id }).getOne();
@@ -107,6 +141,8 @@ export class EmpleadoService extends BaseOfflineService<Empleado> {
 
   /** Desvincula al empleado de ESTA finca (conserva su historial de tareas y pagos). */
   remove(id: number) {
-    return this.removeOffline(id, () => this.fincas.quitarMiembro(this.idfinca, id));
+    return this.removeOffline(id, () =>
+      this.fincas.quitarMiembro(this.idfinca, id),
+    );
   }
 }

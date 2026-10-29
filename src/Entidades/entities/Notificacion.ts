@@ -1,45 +1,45 @@
-import { Column, Entity, Index, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
-@Index("notificacion_pkey", ["idnotificacion"], { unique: true })
-@Entity("notificacion", { schema: "public" })
+@Index('notificacion_pkey', ['idnotificacion'], { unique: true })
+@Entity('notificacion', { schema: 'public' })
 export class Notificacion {
-  @PrimaryGeneratedColumn({ type: "integer", name: "idnotificacion" })
+  @PrimaryGeneratedColumn({ type: 'integer', name: 'idnotificacion' })
   idnotificacion: number;
 
   /** Finca a la que pertenece el evento. null en notificaciones del Marketplace dirigidas a compradores. */
-  @Column("integer", { name: "idfinca", nullable: true })
+  @Column('integer', { name: 'idfinca', nullable: true })
   idfinca: number | null;
 
   /** Destinatario puntual. null = visible para toda la finca. */
-  @Column("integer", { name: "idusuariodestino", nullable: true })
+  @Column('integer', { name: 'idusuariodestino', nullable: true })
   idusuariodestino: number | null;
 
-  @Column("character varying", { name: "titulo", nullable: true, length: 150 })
+  @Column('character varying', { name: 'titulo', nullable: true, length: 150 })
   titulo: string | null;
 
-  @Column("text", { name: "mensaje", nullable: true })
+  @Column('text', { name: 'mensaje', nullable: true })
   mensaje: string | null;
 
-  @Column("character varying", { name: "tipo", nullable: true, length: 50 })
+  @Column('character varying', { name: 'tipo', nullable: true, length: 50 })
   tipo: string | null;
 
-  @Column("character varying", {
-    name: "tabla_origen",
+  @Column('character varying', {
+    name: 'tabla_origen',
     nullable: true,
     length: 50,
   })
   tablaOrigen: string | null;
 
-  @Column("integer", { name: "idregistro", nullable: true })
+  @Column('integer', { name: 'idregistro', nullable: true })
   idregistro: number | null;
 
-  @Column("timestamp without time zone", {
-    name: "fecha",
+  @Column('timestamp without time zone', {
+    name: 'fecha',
     nullable: true,
-    default: () => "now()",
+    default: () => 'now()',
   })
   fecha: Date | null;
 
-  @Column("boolean", { name: "leida", nullable: true, default: () => "false" })
+  @Column('boolean', { name: 'leida', nullable: true, default: () => 'false' })
   leida: boolean | null;
 }

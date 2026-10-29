@@ -10,7 +10,15 @@ import { RecurrenciaService } from './recurrencia.service';
 import { TareasModule } from '../tareas/tareas.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([PlantillaLabor, PlantillaLaborInsumo, Cultivo, Tarea]), TareasModule],
+  imports: [
+    TypeOrmModule.forFeature([
+      PlantillaLabor,
+      PlantillaLaborInsumo,
+      Cultivo,
+      Tarea,
+    ]),
+    TareasModule,
+  ],
   controllers: [PlantillasController],
   providers: [PlantillasService, RecurrenciaService],
   exports: [PlantillasService, RecurrenciaService],

@@ -11,7 +11,9 @@ export class AuditoriaController {
   @Get() @Roles('admin') findAll() {
     return this.auditoriaService.findAll();
   }
-  @Get('tabla/:tabla') @Roles('admin') findByTabla(@Param('tabla') tabla: string) {
+  @Get('tabla/:tabla') @Roles('admin') findByTabla(
+    @Param('tabla') tabla: string,
+  ) {
     return this.auditoriaService.findByTabla(tabla);
   }
   @Get(':id') @Roles('admin') findOne(@Param('id') id: string) {

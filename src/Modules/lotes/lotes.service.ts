@@ -29,15 +29,18 @@ export class LotesService extends BaseOfflineService<Lote> {
 
   findAll() {
     return this.findAllOffline(() =>
-      this.repo.createQueryBuilder('lote')
+      this.repo
+        .createQueryBuilder('lote')
         .leftJoinAndSelect('lote.cultivos', 'cultivo')
         .where('lote.idfinca = :f', { f: this.idfinca })
-        .getMany()
+        .getMany(),
     );
   }
 
   findOne(id: number) {
-    return this.findOneOffline(id, () => this.repo.findOneBy(this.where({ idlote: id })));
+    return this.findOneOffline(id, () =>
+      this.repo.findOneBy(this.where({ idlote: id })),
+    );
   }
 
   async subirFoto(base64: string) {
@@ -53,7 +56,9 @@ export class LotesService extends BaseOfflineService<Lote> {
   }
 
   create(data: Partial<Lote>) {
-    return this.createOffline(data, () => this.repo.save(this.repo.create(this.withFinca(data))));
+    return this.createOffline(data, () =>
+      this.repo.save(this.repo.create(this.withFinca(data))),
+    );
   }
 
   update(id: number, data: Partial<Lote>) {

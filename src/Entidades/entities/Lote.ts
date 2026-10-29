@@ -1,52 +1,51 @@
-
 import {
   Column,
   Entity,
   Index,
   OneToMany,
   PrimaryGeneratedColumn,
-} from "typeorm";
-import { Cultivo } from "./Cultivo";
-import { Palma } from "./Palma";
-import { ProduccionPalma } from "./ProduccionPalma";
-import { numericTransformer } from "../../common/transformers";
+} from 'typeorm';
+import { Cultivo } from './Cultivo';
+import { Palma } from './Palma';
+import { ProduccionPalma } from './ProduccionPalma';
+import { numericTransformer } from '../../common/transformers';
 
-@Index("lote_pkey", ["idlote"], { unique: true })
-@Entity("lote", { schema: "public" })
+@Index('lote_pkey', ['idlote'], { unique: true })
+@Entity('lote', { schema: 'public' })
 export class Lote {
-  @PrimaryGeneratedColumn({ type: "integer", name: "idlote" })
+  @PrimaryGeneratedColumn({ type: 'integer', name: 'idlote' })
   idlote: number;
 
   /** Tenant (finca dueña del dato) */
-  @Column("integer", { name: "idfinca" })
+  @Column('integer', { name: 'idfinca' })
   idfinca: number;
 
-  @Column("character varying", { name: "nombre", nullable: true, length: 100 })
+  @Column('character varying', { name: 'nombre', nullable: true, length: 100 })
   nombre: string | null;
 
-  @Column("numeric", {
-    name: "areahectareas",
+  @Column('numeric', {
+    name: 'areahectareas',
     nullable: true,
     precision: 10,
     scale: 2,
     transformer: numericTransformer,
   })
-  areahectareas: number | null;  // ✅
+  areahectareas: number | null; // ✅
 
-  @Column("character varying", {
-    name: "ubicacion",
+  @Column('character varying', {
+    name: 'ubicacion',
     nullable: true,
     length: 255,
   })
   ubicacion: string | null;
 
-  @Column("text", { name: "descripcion", nullable: true })
+  @Column('text', { name: 'descripcion', nullable: true })
   descripcion: string | null;
 
-  @Column("text", { name: "imagenurl", nullable: true })
+  @Column('text', { name: 'imagenurl', nullable: true })
   imagenurl: string | null;
 
-  @Column("boolean", { name: "activo", nullable: true, default: () => "true" })
+  @Column('boolean', { name: 'activo', nullable: true, default: () => 'true' })
   activo: boolean | null;
 
   @OneToMany(() => Cultivo, (cultivo) => cultivo.idlote)

@@ -2,11 +2,11 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TareasService } from './tareas.service';
 import { TareasController } from './tareas.controller';
-import { Tarea }           from '../../Entidades/entities/Tarea';
-import { Empleado }        from '../../Entidades/entities/Empleado';
+import { Tarea } from '../../Entidades/entities/Tarea';
+import { Empleado } from '../../Entidades/entities/Empleado';
 import { AsignacionTarea } from '../../Entidades/entities/AsignacionTarea';
-import { MailModule }      from '../../mail/mail.module';
-import { CommonModule }    from '../../common/common.module';
+import { MailModule } from '../../mail/mail.module';
+import { CommonModule } from '../../common/common.module';
 import { Insumo } from '../../Entidades/entities/Insumo';
 import { DetalleTarea } from '../../Entidades/entities/DetalleTarea';
 import { AsignacionSugeridaService } from './asignacion-sugerida.service';
@@ -20,12 +20,30 @@ import { JornadaController } from './jornada.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Tarea, Empleado, AsignacionTarea,Insumo,AsignacionTarea ]),
+    TypeOrmModule.forFeature([
+      Tarea,
+      Empleado,
+      AsignacionTarea,
+      Insumo,
+      AsignacionTarea,
+    ]),
     MailModule,
     CommonModule,
   ],
-  controllers: [TareasController, AsignacionSugeridaController, TareaSugerenciasController, TareaEvidenciaController, JornadaController],
-  providers: [TareasService, AsignacionSugeridaService, TareaSugerenciasService, TareaEvidenciaService, AvisosTareasService],
+  controllers: [
+    TareasController,
+    AsignacionSugeridaController,
+    TareaSugerenciasController,
+    TareaEvidenciaController,
+    JornadaController,
+  ],
+  providers: [
+    TareasService,
+    AsignacionSugeridaService,
+    TareaSugerenciasService,
+    TareaEvidenciaService,
+    AvisosTareasService,
+  ],
   exports: [AsignacionSugeridaService],
 })
 export class TareasModule {}

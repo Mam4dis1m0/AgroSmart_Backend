@@ -1,13 +1,25 @@
 import {
-  Controller, Get, Post, Put, Patch, Delete,
-  Param, Body, BadRequestException,
-  UploadedFile, UseInterceptors,
+  Controller,
+  Get,
+  Post,
+  Put,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  BadRequestException,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import * as path from 'path';
 import { DatosCosecha, TareasService } from './tareas.service';
-import { CreateTareaDto, UpdateTareaDto, AsignarTareaDto } from '../../dto/tarea.dto';
+import {
+  CreateTareaDto,
+  UpdateTareaDto,
+  AsignarTareaDto,
+} from '../../dto/tarea.dto';
 import { Roles } from '../../auth/auth.decorators';
 
 @Controller('api/v1/tareas')
@@ -15,7 +27,9 @@ export class TareasController {
   constructor(private readonly tareasService: TareasService) {}
 
   @Get()
-  findAll() { return this.tareasService.findAll(); }
+  findAll() {
+    return this.tareasService.findAll();
+  }
 
   @Get('estado/:estado')
   findByEstado(@Param('estado') estado: string) {
@@ -23,11 +37,15 @@ export class TareasController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) { return this.tareasService.findOne(+id); }
+  findOne(@Param('id') id: string) {
+    return this.tareasService.findOne(+id);
+  }
 
   @Post()
   @Roles('admin')
-  create(@Body() body: CreateTareaDto) { return this.tareasService.create(body); }
+  create(@Body() body: CreateTareaDto) {
+    return this.tareasService.create(body);
+  }
 
   // El empleado solo puede cambiar el ESTADO de sus tareas (lo valida el servicio)
   @Put(':id')
@@ -57,28 +75,41 @@ export class TareasController {
 
   // En una tarea de cosecha, `cosecha` trae lo recolectado: queda registrado en Cosechas.
   @Patch(':id/finalizar')
-  finalizar(@Param('id') id: string, @Body() body: { at?: string; cosecha?: DatosCosecha }) {
+  finalizar(
+    @Param('id') id: string,
+    @Body() body: { at?: string; cosecha?: DatosCosecha },
+  ) {
     return this.tareasService.completar(+id, body?.at, body?.cosecha);
   }
 
   @Patch(':id/completar')
-  completar(@Param('id') id: string, @Body() body: { at?: string; cosecha?: DatosCosecha }) {
+  completar(
+    @Param('id') id: string,
+    @Body() body: { at?: string; cosecha?: DatosCosecha },
+  ) {
     return this.tareasService.completar(+id, body?.at, body?.cosecha);
   }
 
   // ── NUEVO ─────────────────────────────────────────────────────────────────
   @Post(':id/completar-con-evidencia')
-  @UseInterceptors(FileInterceptor('evidencia', {
-    storage: diskStorage({
-      destination: './uploads/evidencias',
-      filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
+  @UseInterceptors(
+    FileInterceptor('evidencia', {
+      storage: diskStorage({
+        destination: './uploads/evidencias',
+        filename: (req, file, cb) =>
+          cb(null, `${Date.now()}-${file.originalname}`),
+      }),
     }),
-  }))
+  )
   completarConEvidencia(
     @Param('id') id: string,
     @Body() body: any,
     @UploadedFile() file?: any,
   ) {
-    return this.tareasService.completarConEvidencia(+id, body, file?.path ?? null);
+    return this.tareasService.completarConEvidencia(
+      +id,
+      body,
+      file?.path ?? null,
+    );
   }
 }

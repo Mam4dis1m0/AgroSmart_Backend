@@ -1,20 +1,25 @@
-import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
-@Entity("chat_mensaje", { schema: "public" })
+@Entity('chat_mensaje', { schema: 'public' })
 export class ChatMensaje {
-  @PrimaryGeneratedColumn({ type: "bigint", name: "idmensaje" })
+  @PrimaryGeneratedColumn({ type: 'bigint', name: 'idmensaje' })
   idmensaje: string;
 
-  @Column("integer", { name: "idconversacion" })
+  @Column('integer', { name: 'idconversacion' })
   idconversacion: number;
 
   /** user | assistant | system */
-  @Column("character varying", { name: "rol", length: 10 })
+  @Column('character varying', { name: 'rol', length: 10 })
   rol: string;
 
-  @Column("text", { name: "contenido" })
+  @Column('text', { name: 'contenido' })
   contenido: string;
 
-  @Column({ type: "timestamp with time zone", name: "created_at", default: () => "now()", update: false })
+  @Column({
+    type: 'timestamp with time zone',
+    name: 'created_at',
+    default: () => 'now()',
+    update: false,
+  })
   createdAt: Date;
 }

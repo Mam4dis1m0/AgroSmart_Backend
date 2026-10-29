@@ -17,7 +17,10 @@ export class SesionService {
   constructor(private readonly ds: DataSource) {}
 
   /** idfinca = null para compradores o cuando todavía no hay finca activa. */
-  async estaActiva(idusuario: number, idfinca: number | null): Promise<boolean> {
+  async estaActiva(
+    idusuario: number,
+    idfinca: number | null,
+  ): Promise<boolean> {
     const key = `${idusuario}:${idfinca ?? 0}`;
     const hit = this.cache.get(key);
     if (hit && hit.hasta > Date.now()) return hit.ok;
@@ -44,7 +47,9 @@ export class SesionService {
       return ok;
     } catch (err) {
       // Sin red o esquema sin migrar: no tumbar la API, pero dejar rastro
-      this.logger.warn(`No se pudo verificar la sesión (${(err as Error).message}); se confía en el token`);
+      this.logger.warn(
+        `No se pudo verificar la sesión (${(err as Error).message}); se confía en el token`,
+      );
       return true;
     }
   }

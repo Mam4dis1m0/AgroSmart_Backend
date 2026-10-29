@@ -71,10 +71,13 @@ export class RecurrenciaService {
         try {
           if (await this.programarSiguiente(u)) creadas++;
         } catch (err) {
-          this.logger.error(`Recurrencia de la tarea #${u.idtarea}: ${(err as Error).message}`);
+          this.logger.error(
+            `Recurrencia de la tarea #${u.idtarea}: ${(err as Error).message}`,
+          );
         }
       }
-      if (creadas) this.logger.log(`🔁 ${creadas} tarea(s) recurrente(s) programada(s)`);
+      if (creadas)
+        this.logger.log(`🔁 ${creadas} tarea(s) recurrente(s) programada(s)`);
       return creadas;
     } catch (err) {
       this.logger.warn(`procesar recurrencias: ${(err as Error).message}`);
@@ -87,7 +90,10 @@ export class RecurrenciaService {
   private async programarSiguiente(u: Ultima): Promise<boolean> {
     // Solo se programa la siguiente cuando la última ocurrencia ya se completó (no se acumulan atrasadas)
     const [t] = filas<{ estado: string | null }>(
-      await this.ds.query(`SELECT estado FROM tarea WHERE idtarea = $1 AND idfinca = $2`, [u.idtarea, u.idfinca]),
+      await this.ds.query(
+        `SELECT estado FROM tarea WHERE idtarea = $1 AND idfinca = $2`,
+        [u.idtarea, u.idfinca],
+      ),
     );
     if (!t?.estado?.toLowerCase().startsWith('completad')) return false;
 
@@ -106,8 +112,9 @@ export class RecurrenciaService {
     );
     if (abiertas) return false;
 
-    const nueva = filas<{ idtarea: number }>(await this.ds.query(
-      `INSERT INTO tarea (idfinca, tipoactividad, fechaprogramada, estado, esrecurrente, frecuenciadias,
+    const nueva = filas<{ idtarea: number }>(
+      await this.ds.query(
+        `INSERT INTO tarea (idfinca, tipoactividad, fechaprogramada, estado, esrecurrente, frecuenciadias,
                           costototal, costotransporte, tiempototaltarea, idadmincreador, idcultivo,
                           idplantilla, idtareaorigen, prioridad, horasestimadas, etapa, generadaauto)
        SELECT idfinca, tipoactividad, $3::date, 'Pendiente', esrecurrente, frecuenciadias,
@@ -115,9 +122,15 @@ export class RecurrenciaService {
               idplantilla, $2, prioridad, horasestimadas, etapa, true
          FROM tarea WHERE idtarea = $1 AND idfinca = $4
        RETURNING idtarea`,
-      [u.idtarea, u.raiz, siguiente, u.idfinca],
-    ));
-    if (nueva[0]) await this.sugerida.asignarContinuidad(u.idfinca, u.idtarea, nueva[0].idtarea);
+        [u.idtarea, u.raiz, siguiente, u.idfinca],
+      ),
+    );
+    if (nueva[0])
+      await this.sugerida.asignarContinuidad(
+        u.idfinca,
+        u.idtarea,
+        nueva[0].idtarea,
+      );
     return true;
   }
 

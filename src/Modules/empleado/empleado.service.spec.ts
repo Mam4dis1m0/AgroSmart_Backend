@@ -22,7 +22,10 @@ describe('EmpleadoService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EmpleadoService,
-        { provide: getRepositoryToken(Empleado), useValue: mockEmpleadoRepository },
+        {
+          provide: getRepositoryToken(Empleado),
+          useValue: mockEmpleadoRepository,
+        },
         { provide: CacheService, useValue: mockCacheService },
         { provide: OfflineQueueService, useValue: mockOfflineQueueService },
         { provide: SyncService, useValue: mockSyncService },

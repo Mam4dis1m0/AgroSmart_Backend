@@ -1,4 +1,10 @@
-import { BadRequestException, Body, Controller, Get, Put } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Put,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { Roles } from '../../auth/auth.decorators';
 import { TenantContext } from '../../auth/tenant-context';
@@ -16,19 +22,33 @@ export class JornadaController {
   @Get()
   @Roles('admin')
   obtener() {
-    return manoObraDeFinca((q, p) => this.ds.query(q, p), TenantContext.requireFinca());
+    return manoObraDeFinca(
+      (q, p) => this.ds.query(q, p),
+      TenantContext.requireFinca(),
+    );
   }
 
   @Put()
   @Roles('admin')
   async guardar(@Body() dto: JornadaDto) {
-    if (horasDeJornada(dto.jornadainicio, dto.jornadafin, dto.jornadadescanso) <= 0) {
-      throw new BadRequestException('La salida debe ser posterior a la entrada y el descanso no puede ocupar toda la jornada');
+    if (
+      horasDeJornada(dto.jornadainicio, dto.jornadafin, dto.jornadadescanso) <=
+      0
+    ) {
+      throw new BadRequestException(
+        'La salida debe ser posterior a la entrada y el descanso no puede ocupar toda la jornada',
+      );
     }
     const idfinca = TenantContext.requireFinca();
     await this.ds.query(
       `UPDATE finca SET jornadainicio = $2, jornadafin = $3, jornadadescanso = $4, jornadapersonas = $5 WHERE idfinca = $1`,
-      [idfinca, dto.jornadainicio, dto.jornadafin, dto.jornadadescanso, dto.jornadapersonas ?? null],
+      [
+        idfinca,
+        dto.jornadainicio,
+        dto.jornadafin,
+        dto.jornadadescanso,
+        dto.jornadapersonas ?? null,
+      ],
     );
     return manoObraDeFinca((q, p) => this.ds.query(q, p), idfinca);
   }

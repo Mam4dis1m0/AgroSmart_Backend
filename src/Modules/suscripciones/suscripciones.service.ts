@@ -35,7 +35,9 @@ export class SuscripcionesService {
 
   private exigirOnline() {
     if (!this.ds.isInitialized) {
-      throw new ServiceUnavailableException('Esta operación requiere conexión a internet');
+      throw new ServiceUnavailableException(
+        'Esta operación requiere conexión a internet',
+      );
     }
   }
 
@@ -77,31 +79,47 @@ export class SuscripcionesService {
     const [premium] = await this.ds.query(
       `SELECT idplan, preciomensual::float8 AS precio, moneda FROM plan WHERE codigo = 'PREMIUM' AND activo = true`,
     );
-    if (!premium) throw new NotFoundException('El plan Premium no está disponible');
+    if (!premium)
+      throw new NotFoundException('El plan Premium no está disponible');
 
     const actual = await this.planes.getPlan(idfinca);
     if (actual.codigo === 'PREMIUM') {
       throw new ConflictException('Tu finca ya tiene el plan Premium activo');
     }
 
-    const cobro = await this.pasarela.cobrar(premium.precio, premium.moneda, `Suscripción Premium finca ${idfinca}`, {
-      idfinca,
-      idusuario: user.idusuario,
-    });
+    const cobro = await this.pasarela.cobrar(
+      premium.precio,
+      premium.moneda,
+      `Suscripción Premium finca ${idfinca}`,
+      {
+        idfinca,
+        idusuario: user.idusuario,
+      },
+    );
 
     const [pago] = await this.ds.query(
       `INSERT INTO pago (idfinca, idusuario, tipo, monto, moneda, estado, proveedor, referenciaexterna)
        VALUES ($1, $2, 'SUSCRIPCION', $3, $4, $5, $6, $7) RETURNING idpago`,
       [
-        idfinca, user.idusuario, premium.precio, premium.moneda,
-        cobro.aprobado ? 'APROBADO' : 'FALLIDO', cobro.proveedor, cobro.referencia,
+        idfinca,
+        user.idusuario,
+        premium.precio,
+        premium.moneda,
+        cobro.aprobado ? 'APROBADO' : 'FALLIDO',
+        cobro.proveedor,
+        cobro.referencia,
       ],
     );
 
     // Pago fallido → la finca conserva su plan actual
     if (!cobro.aprobado) {
       throw new HttpException(
-        { statusCode: 402, message: cobro.motivo ?? 'El pago fue rechazado. Se mantiene tu plan actual.' },
+        {
+          statusCode: 402,
+          message:
+            cobro.motivo ??
+            'El pago fue rechazado. Se mantiene tu plan actual.',
+        },
         HttpStatus.PAYMENT_REQUIRED,
       );
     }
@@ -130,7 +148,9 @@ export class SuscripcionesService {
   // ── Cancelar → vuelve a Freemium conservando los datos ────────────────────
   async cancelar(idfinca: number) {
     this.exigirOnline();
-    const [free] = await this.ds.query(`SELECT idplan FROM plan WHERE codigo = 'FREEMIUM'`);
+    const [free] = await this.ds.query(
+      `SELECT idplan FROM plan WHERE codigo = 'FREEMIUM'`,
+    );
     if (!free) throw new NotFoundException('Falta el plan FREEMIUM');
 
     const actual = await this.planes.getPlan(idfinca);
@@ -141,15 +161,25 @@ export class SuscripcionesService {
     return this.miSuscripcion(idfinca);
   }
 
-  private async bajarAFreemium(idfinca: number, idPlanFree: number, estadoPrevia: 'CANCELADA' | 'VENCIDA') {
+  private async bajarAFreemium(
+    idfinca: number,
+    idPlanFree: number,
+    estadoPrevia: 'CANCELADA' | 'VENCIDA',
+  ) {
     await this.ds.transaction(async (m) => {
       await m.query(
         `UPDATE suscripcion SET estado = $2, fechafin = now(), renovacionautomatica = false
           WHERE idfinca = $1 AND estado = 'ACTIVA'`,
         [idfinca, estadoPrevia],
       );
-      await m.query(`INSERT INTO suscripcion (idfinca, idplan, estado) VALUES ($1, $2, 'ACTIVA')`, [idfinca, idPlanFree]);
-      await m.query(`UPDATE finca SET idplan = $2, planvencimiento = NULL WHERE idfinca = $1`, [idfinca, idPlanFree]);
+      await m.query(
+        `INSERT INTO suscripcion (idfinca, idplan, estado) VALUES ($1, $2, 'ACTIVA')`,
+        [idfinca, idPlanFree],
+      );
+      await m.query(
+        `UPDATE finca SET idplan = $2, planvencimiento = NULL WHERE idfinca = $1`,
+        [idfinca, idPlanFree],
+      );
     });
     this.planes.invalidar(idfinca);
   }
@@ -160,7 +190,13 @@ export class SuscripcionesService {
   async procesarVencimientos() {
     if (!this.ds.isInitialized) return;
     try {
-      const vencidas = filas<{ idsuscripcion: number; idfinca: number; idplan: number; renovacionautomatica: boolean; idusuario: number | null }>(
+      const vencidas = filas<{
+        idsuscripcion: number;
+        idfinca: number;
+        idplan: number;
+        renovacionautomatica: boolean;
+        idusuario: number | null;
+      }>(
         await this.ds.query(
           `SELECT s.idsuscripcion, s.idfinca, s.idplan, s.renovacionautomatica, f.idpropietario AS idusuario
              FROM suscripcion s
@@ -171,14 +207,20 @@ export class SuscripcionesService {
       );
       if (vencidas.length === 0) return;
 
-      const [free] = await this.ds.query(`SELECT idplan FROM plan WHERE codigo = 'FREEMIUM'`);
+      const [free] = await this.ds.query(
+        `SELECT idplan FROM plan WHERE codigo = 'FREEMIUM'`,
+      );
       for (const s of vencidas) {
         try {
           if (s.renovacionautomatica && (await this.renovar(s))) continue;
           await this.bajarAFreemium(s.idfinca, free.idplan, 'VENCIDA');
-          this.logger.warn(`⏬ Finca ${s.idfinca}: suscripción vencida, vuelve a Freemium`);
+          this.logger.warn(
+            `⏬ Finca ${s.idfinca}: suscripción vencida, vuelve a Freemium`,
+          );
         } catch (err) {
-          this.logger.error(`No se pudo procesar la suscripción ${s.idsuscripcion}: ${(err as Error).message}`);
+          this.logger.error(
+            `No se pudo procesar la suscripción ${s.idsuscripcion}: ${(err as Error).message}`,
+          );
         }
       }
     } catch (err) {
@@ -186,18 +228,39 @@ export class SuscripcionesService {
     }
   }
 
-  private async renovar(s: { idsuscripcion: number; idfinca: number; idplan: number; idusuario: number | null }): Promise<boolean> {
-    const [plan] = await this.ds.query(`SELECT preciomensual::float8 AS precio, moneda FROM plan WHERE idplan = $1`, [s.idplan]);
+  private async renovar(s: {
+    idsuscripcion: number;
+    idfinca: number;
+    idplan: number;
+    idusuario: number | null;
+  }): Promise<boolean> {
+    const [plan] = await this.ds.query(
+      `SELECT preciomensual::float8 AS precio, moneda FROM plan WHERE idplan = $1`,
+      [s.idplan],
+    );
     let cobro;
     try {
-      cobro = await this.pasarela.cobrar(plan.precio, plan.moneda, `Renovación finca ${s.idfinca}`, { idfinca: s.idfinca });
+      cobro = await this.pasarela.cobrar(
+        plan.precio,
+        plan.moneda,
+        `Renovación finca ${s.idfinca}`,
+        { idfinca: s.idfinca },
+      );
     } catch {
       return false; // pasarela no disponible: se trata como pago fallido
     }
     const [pago] = await this.ds.query(
       `INSERT INTO pago (idfinca, idusuario, tipo, monto, moneda, estado, proveedor, referenciaexterna)
        VALUES ($1, $2, 'SUSCRIPCION', $3, $4, $5, $6, $7) RETURNING idpago`,
-      [s.idfinca, s.idusuario, plan.precio, plan.moneda, cobro.aprobado ? 'APROBADO' : 'FALLIDO', cobro.proveedor, cobro.referencia],
+      [
+        s.idfinca,
+        s.idusuario,
+        plan.precio,
+        plan.moneda,
+        cobro.aprobado ? 'APROBADO' : 'FALLIDO',
+        cobro.proveedor,
+        cobro.referencia,
+      ],
     );
     if (!cobro.aprobado) return false;
 

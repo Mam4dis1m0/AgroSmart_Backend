@@ -22,7 +22,10 @@ describe('AdministradorService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AdministradorService,
-        { provide: getRepositoryToken(Administrador), useValue: mockAdministradorRepository },
+        {
+          provide: getRepositoryToken(Administrador),
+          useValue: mockAdministradorRepository,
+        },
         { provide: CacheService, useValue: mockCacheService },
         { provide: OfflineQueueService, useValue: mockOfflineQueueService },
         { provide: SyncService, useValue: mockSyncService },

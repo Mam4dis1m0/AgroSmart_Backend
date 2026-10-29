@@ -17,11 +17,16 @@ describe('AsignacionTareaController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AsignacionTareaController],
       providers: [
-        { provide: AsignacionTareaService, useValue: mockAsignacionTareaService },
+        {
+          provide: AsignacionTareaService,
+          useValue: mockAsignacionTareaService,
+        },
       ],
     }).compile();
 
-    controller = module.get<AsignacionTareaController>(AsignacionTareaController);
+    controller = module.get<AsignacionTareaController>(
+      AsignacionTareaController,
+    );
   });
 
   afterEach(() => {

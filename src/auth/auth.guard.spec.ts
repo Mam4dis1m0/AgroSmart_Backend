@@ -1,4 +1,8 @@
-import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from './auth.guard';
 import { Public, Roles, SinFinca } from './auth.decorators';
@@ -17,19 +21,50 @@ describe('AuthGuard (JWT + rol + finca activa)', () => {
   process.env.JWT_SECRET = 'secreto-de-pruebas-con-mas-de-32-caracteres!!';
   const tokens = new TokenService();
   const sesiones = { estaActiva: jest.fn() };
-  const auditoriaRepo = { save: jest.fn().mockResolvedValue({}), create: jest.fn((x) => x) };
-  const guard = new AuthGuard(new Reflector(), tokens, sesiones as any, auditoriaRepo as any);
+  const auditoriaRepo = {
+    save: jest.fn().mockResolvedValue({}),
+    create: jest.fn((x) => x),
+  };
+  const guard = new AuthGuard(
+    new Reflector(),
+    tokens,
+    sesiones as any,
+    auditoriaRepo as any,
+  );
 
-  const admin: AuthUser = { idusuario: 1, email: 'a@x.com', rol: 'admin', idfinca: 1 };
-  const empleado: AuthUser = { idusuario: 2, email: 'e@x.com', rol: 'empleado', idfinca: 1 };
-  const comprador: AuthUser = { idusuario: 3, email: 'c@x.com', rol: 'comprador', idfinca: null };
+  const admin: AuthUser = {
+    idusuario: 1,
+    email: 'a@x.com',
+    rol: 'admin',
+    idfinca: 1,
+  };
+  const empleado: AuthUser = {
+    idusuario: 2,
+    email: 'e@x.com',
+    rol: 'empleado',
+    idfinca: 1,
+  };
+  const comprador: AuthUser = {
+    idusuario: 3,
+    email: 'c@x.com',
+    rol: 'comprador',
+    idfinca: null,
+  };
   const adminSinFinca: AuthUser = { ...admin, idfinca: null };
 
   /** Ejecuta el guard como lo hace Nest: dentro del contexto de petición. */
   const entrar = (metodo: keyof Dummy, usuario?: AuthUser | string) => {
     const authorization =
-      typeof usuario === 'string' ? usuario : usuario ? `Bearer ${tokens.sign(usuario)}` : undefined;
-    const req: any = { headers: authorization ? { authorization } : {}, method: 'GET', originalUrl: '/x' };
+      typeof usuario === 'string'
+        ? usuario
+        : usuario
+          ? `Bearer ${tokens.sign(usuario)}`
+          : undefined;
+    const req: any = {
+      headers: authorization ? { authorization } : {},
+      method: 'GET',
+      originalUrl: '/x',
+    };
     const context = {
       getType: () => 'http',
       getHandler: () => Dummy.prototype[metodo],
@@ -39,7 +74,12 @@ describe('AuthGuard (JWT + rol + finca activa)', () => {
 
     return TenantContext.run(async () => {
       const ok = await guard.canActivate(context);
-      return { ok, req, finca: TenantContext.idfinca(), usuario: TenantContext.user() };
+      return {
+        ok,
+        req,
+        finca: TenantContext.idfinca(),
+        usuario: TenantContext.user(),
+      };
     });
   };
 
@@ -57,11 +97,15 @@ describe('AuthGuard (JWT + rol + finca activa)', () => {
   });
 
   it('token inválido → 401', async () => {
-    await expect(entrar('normal', 'Bearer abc.def.ghi')).rejects.toThrow(UnauthorizedException);
+    await expect(entrar('normal', 'Bearer abc.def.ghi')).rejects.toThrow(
+      UnauthorizedException,
+    );
   });
 
   it('esquema distinto de Bearer → 401', async () => {
-    await expect(entrar('normal', `Basic ${tokens.sign(admin)}`)).rejects.toThrow(UnauthorizedException);
+    await expect(
+      entrar('normal', `Basic ${tokens.sign(admin)}`),
+    ).rejects.toThrow(UnauthorizedException);
   });
 
   it('con token válido publica usuario y finca activa para los servicios (aislamiento)', async () => {
@@ -73,16 +117,26 @@ describe('AuthGuard (JWT + rol + finca activa)', () => {
   });
 
   it('un empleado no entra a una ruta @Roles("admin") y el intento queda auditado (RNF-20)', async () => {
-    await expect(entrar('soloAdmin', empleado)).rejects.toThrow(ForbiddenException);
+    await expect(entrar('soloAdmin', empleado)).rejects.toThrow(
+      ForbiddenException,
+    );
     await new Promise(setImmediate); // la auditoría es fire-and-forget
     expect(auditoriaRepo.save).toHaveBeenCalledWith(
-      expect.objectContaining({ operacion: 'DENEGADO', idusuario: 2, idfinca: 1 }),
+      expect.objectContaining({
+        operacion: 'DENEGADO',
+        idusuario: 2,
+        idfinca: 1,
+      }),
     );
   });
 
   it('el comprador externo NO entra a rutas de gestión por defecto (tareas, inventario, costos)', async () => {
-    await expect(entrar('normal', comprador)).rejects.toThrow(ForbiddenException);
-    await expect(entrar('soloAdmin', comprador)).rejects.toThrow(ForbiddenException);
+    await expect(entrar('normal', comprador)).rejects.toThrow(
+      ForbiddenException,
+    );
+    await expect(entrar('soloAdmin', comprador)).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 
   it('el comprador SÍ entra al catálogo (@SinFinca + rol comprador)', async () => {
@@ -90,7 +144,9 @@ describe('AuthGuard (JWT + rol + finca activa)', () => {
   });
 
   it('un admin sin finca elegida no entra a rutas de gestión…', async () => {
-    await expect(entrar('normal', adminSinFinca)).rejects.toThrow(/finca activa/);
+    await expect(entrar('normal', adminSinFinca)).rejects.toThrow(
+      /finca activa/,
+    );
   });
 
   it('…pero sí a las rutas @SinFinca (para poder elegir finca)', async () => {

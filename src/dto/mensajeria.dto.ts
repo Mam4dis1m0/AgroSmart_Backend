@@ -1,5 +1,14 @@
 import { Transform, Type } from 'class-transformer';
-import { IsInt, IsNotEmpty, IsOptional, IsPositive, IsString, Max, MaxLength, Min } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsPositive,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 /** Abrir (o recuperar) la conversación con el vendedor de una oferta. */
 export class CrearHiloDto {
@@ -11,7 +20,9 @@ export class CrearHiloDto {
 
 export class EnviarMensajeDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  @IsString() @IsNotEmpty({ message: 'El mensaje no puede estar vacío' }) @MaxLength(2000)
+  @IsString()
+  @IsNotEmpty({ message: 'El mensaje no puede estar vacío' })
+  @MaxLength(2000)
   contenido: string;
 }
 

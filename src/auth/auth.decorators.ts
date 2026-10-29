@@ -1,5 +1,9 @@
 // src/auth/auth.decorators.ts
-import { createParamDecorator, ExecutionContext, SetMetadata } from '@nestjs/common';
+import {
+  createParamDecorator,
+  ExecutionContext,
+  SetMetadata,
+} from '@nestjs/common';
 import { AuthUser, Rol } from './tenant-context';
 
 export const IS_PUBLIC_KEY = 'agro:isPublic';
@@ -23,9 +27,12 @@ export const SinFinca = () => SetMetadata(SIN_FINCA_KEY, true);
  * Exige que el plan de la finca incluya la función (ver tabla plan.funciones):
  * nomina, exportar_excel, talent_center, chat_ia, marketplace_premium, ...
  */
-export const RequiereFuncion = (funcion: string) => SetMetadata(FUNCION_KEY, funcion);
+export const RequiereFuncion = (funcion: string) =>
+  SetMetadata(FUNCION_KEY, funcion);
 
 /** Inyecta el usuario autenticado en el handler: handler(@CurrentUser() user: AuthUser) */
-export const CurrentUser = createParamDecorator((_data: unknown, ctx: ExecutionContext): AuthUser => {
-  return ctx.switchToHttp().getRequest().user;
-});
+export const CurrentUser = createParamDecorator(
+  (_data: unknown, ctx: ExecutionContext): AuthUser => {
+    return ctx.switchToHttp().getRequest().user;
+  },
+);
