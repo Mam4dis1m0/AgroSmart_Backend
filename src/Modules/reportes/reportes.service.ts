@@ -10,6 +10,7 @@
 
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { costoHoraDeFinca } from '../tareas/mano-obra';
 
 type Fila = Record<string, unknown>;
 
@@ -24,8 +25,10 @@ export class ReportesService {
   }
 
   // ── CU-39 ─────────────────────────────────────────────────────────────────
-  costosPorCultivo(idfinca: number, desde?: string, hasta?: string): Promise<Fila[]> {
+  async costosPorCultivo(idfinca: number, desde?: string, hasta?: string): Promise<Fila[]> {
     this.exigirOnline();
+    // Mano de obra = horas trabajadas en las tareas × costo promedio por hora de la finca (no depende del pago de cada persona)
+    const costoHora = await costoHoraDeFinca((q, p) => this.ds.query(q, p), idfinca);
     return this.ds.query(
       `WITH ins AS (
          SELECT t.idcultivo,
@@ -39,11 +42,9 @@ export class ReportesService {
           GROUP BY t.idcultivo
        ), lab AS (
          SELECT t.idcultivo,
-                SUM(COALESCE(a.horastrabajadas, 0)    * COALESCE(e.montoporhora, 0)
-                  + COALESCE(a.jornadastrabajadas, 0) * COALESCE(e.montoporjornal, 0)) AS costo
+                SUM(COALESCE(a.horastrabajadas, 0)) * $4::numeric AS costo
            FROM asignacion_tarea a
            JOIN tarea    t ON t.idtarea = a.idtarea
-           JOIN empleado e ON e.idusuario = a.idempleado
           WHERE t.idfinca = $1
             AND ($2::date IS NULL OR t.fechaprogramada >= $2::date)
             AND ($3::date IS NULL OR t.fechaprogramada <= $3::date)
@@ -58,7 +59,7 @@ export class ReportesService {
          LEFT JOIN lab ON lab.idcultivo = c.idcultivo
         WHERE c.idfinca = $1
         ORDER BY total DESC, c.nombrelote`,
-      [idfinca, desde ?? null, hasta ?? null],
+      [idfinca, desde ?? null, hasta ?? null, costoHora],
     );
   }
 

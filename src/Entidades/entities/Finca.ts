@@ -50,6 +50,20 @@ export class Finca {
   @Column("character varying", { name: "modoasignacion", length: 20, default: () => "'sugerida'" })
   modoasignacion: string;
 
+  /** Jornada de un día normal de trabajo: sirve para obtener el costo promedio por hora de mano de obra. */
+  @Column("time", { name: "jornadainicio", default: () => "'07:00'" })
+  jornadainicio: string;
+
+  @Column("time", { name: "jornadafin", default: () => "'16:00'" })
+  jornadafin: string;
+
+  @Column("integer", { name: "jornadadescanso", default: () => "60" })
+  jornadadescanso: number;
+
+  /** Personas que trabajan un día normal (null = todos los empleados activos). */
+  @Column("integer", { name: "jornadapersonas", nullable: true })
+  jornadapersonas: number | null;
+
   @ManyToOne(() => Plan)
   @JoinColumn([{ name: "idplan", referencedColumnName: "idplan" }])
   plan: Plan;

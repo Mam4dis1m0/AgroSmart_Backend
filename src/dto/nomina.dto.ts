@@ -10,6 +10,11 @@ export class AjustarDeduccionesDto {
   @IsNumber() @Min(0) deducciones: number;
 }
 
+export class AjustarUnidadesDto {
+  // dias, semanas o meses pagados en la linea (segun el tipo de pago del empleado)
+  @IsNumber() @Min(0) unidades: number;
+}
+
 // CU-39 / CU-40 · filtros de reportes
 export class RangoFechasDto {
   @IsDateString() @IsOptional() desde?: string;

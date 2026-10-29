@@ -160,6 +160,57 @@ describe('TareasService', () => {
     });
   });
 
+  describe('completar() de una tarea de cosecha', () => {
+    const asig = () => ({
+      idasigtarea: 10, estado: 'En progreso',
+      idtarea: { idtarea: 7, tipoactividad: 'Cosecha' },
+      idempleado: { idusuario: 5, idusuario2: { primernombre: 'Ana' } },
+      idadminasignador: { idusuario: 1, idusuario2: { email: 'admin@agrosmart.com' } },
+    });
+    const query = jest.fn();
+
+    beforeEach(() => {
+      (mockTareaRepository as any).manager = { query };
+      query.mockReset().mockResolvedValue([]);
+      mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
+    });
+
+    it('registra lo recolectado en Cosechas, ligado a la tarea y a quien lo recogió', async () => {
+      mockAsignacionTareaRepository.findOne.mockResolvedValue(asig());
+
+      await conSesion(sesionAdmin, () => service.completar(10, '2026-10-28T15:00:00Z', { cantidad: 120.5, unidad: 'kg', calidad: 'Primera' }));
+
+      const insercion = query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO cosecha'));
+      expect(insercion).toBeDefined();
+      expect(insercion![1]).toEqual([7, 1, '2026-10-28', 120.5, 'kg', 'Primera', 'Tarea #7: Cosecha', 1, 5]);
+    });
+
+    it('rechaza una cantidad inválida sin completar la asignación', async () => {
+      mockAsignacionTareaRepository.findOne.mockResolvedValue(asig());
+
+      await expect(conSesion(sesionAdmin, () => service.completar(10, null, { cantidad: -3 }))).rejects.toThrow('mayor que cero');
+      await expect(conSesion(sesionAdmin, () => service.completar(10, null, { cantidad: NaN }))).rejects.toThrow('mayor que cero');
+      expect(mockAsignacionTareaRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('sin cantidad (una tarea común) no toca Cosechas', async () => {
+      mockAsignacionTareaRepository.findOne.mockResolvedValue(asig());
+
+      await conSesion(sesionAdmin, () => service.completar(10));
+
+      expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO cosecha'))).toBe(false);
+    });
+
+    it('usa kg cuando no se indica unidad', async () => {
+      mockAsignacionTareaRepository.findOne.mockResolvedValue(asig());
+
+      await conSesion(sesionAdmin, () => service.completar(10, null, { cantidad: 30 }));
+
+      const insercion = query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO cosecha'));
+      expect(insercion![1][4]).toBe('kg');
+    });
+  });
+
   describe('iniciar()', () => {
     const asig = () => ({
       idasigtarea: 10, estado: 'Asignado', fechainicio: null,

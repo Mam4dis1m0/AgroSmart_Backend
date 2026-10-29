@@ -124,7 +124,8 @@ export class RecurrenciaService {
   /** Hasta cuándo se repite: fin de la plantilla, cosecha estimada del cultivo o, si no hay datos, un año. */
   private fechaLimite(u: Ultima): string | null {
     if (u.diasfin !== null && u.base) {
-      const b = fechaBase(u.base, u);
+      // Labores de mantenimiento («inicio»): se repiten durante diasfin días a partir de su primera ocurrencia
+      const b = u.base === 'inicio' ? u.fecharaiz : fechaBase(u.base, u);
       if (b) return sumarDias(b, u.diasfin);
     }
     if (u.fechacosechaestimada) return u.fechacosechaestimada;

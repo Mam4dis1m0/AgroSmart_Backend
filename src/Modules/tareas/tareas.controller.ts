@@ -6,7 +6,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import * as path from 'path';
-import { TareasService } from './tareas.service';
+import { DatosCosecha, TareasService } from './tareas.service';
 import { CreateTareaDto, UpdateTareaDto, AsignarTareaDto } from '../../dto/tarea.dto';
 import { Roles } from '../../auth/auth.decorators';
 
@@ -55,14 +55,15 @@ export class TareasController {
     return this.tareasService.iniciar(+id, body?.at);
   }
 
+  // En una tarea de cosecha, `cosecha` trae lo recolectado: queda registrado en Cosechas.
   @Patch(':id/finalizar')
-  finalizar(@Param('id') id: string, @Body() body: { at?: string }) {
-    return this.tareasService.completar(+id, body?.at);
+  finalizar(@Param('id') id: string, @Body() body: { at?: string; cosecha?: DatosCosecha }) {
+    return this.tareasService.completar(+id, body?.at, body?.cosecha);
   }
 
   @Patch(':id/completar')
-  completar(@Param('id') id: string, @Body() body: { at?: string }) {
-    return this.tareasService.completar(+id, body?.at);
+  completar(@Param('id') id: string, @Body() body: { at?: string; cosecha?: DatosCosecha }) {
+    return this.tareasService.completar(+id, body?.at, body?.cosecha);
   }
 
   // ── NUEVO ─────────────────────────────────────────────────────────────────

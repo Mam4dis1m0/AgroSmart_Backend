@@ -2,10 +2,12 @@
 //
 // Nómina y control de pagos (EP-11, CU-38, Premium).
 //
-// Cómo se calcula el pago de cada empleado en el período (según tareas con fecha programada
-// dentro del rango):
-//     bruto = horas × valor/hora  +  jornadas × valor/jornal  +  pago acordado de las asignaciones
-//             COMPLETADAS que no tienen horas ni jornadas registradas (tareas "a destajo")
+// Cada empleado tiene un pago acordado por DÍA, SEMANA o MES. La nómina del período paga eso, no horas:
+//     dia    → días trabajados × valor del día. Un día cuenta si el empleado inició o completó alguna tarea
+//              ese día (se calcula solo; el administrador puede corregirlo mientras el borrador no se confirme).
+//     semana → valor de la semana × (días del período ÷ 7)
+//     mes    → valor del mes × meses del período
+// Así lo que cada empleado registre en sus tareas no cambia lo que se le paga.
 // Las deducciones se ajustan a mano mientras la nómina está en BORRADOR.
 // Flujo: BORRADOR → (revisa/ajusta) → CONFIRMADA → PAGADA.
 //
@@ -20,6 +22,7 @@ import {
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { filas } from '../../common/sql';
+import { brutoDePago, unidadesDePago } from './pago-periodo';
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -33,30 +36,24 @@ export class NominaService {
     }
   }
 
+  /**
+   * Empleados activos con pago configurado y los días del período en que iniciaron o completaron una tarea.
+   * Las horas se ajustan a Colombia (UTC−5) para que un trabajo de la tarde no cuente como el día siguiente.
+   */
   private lineasDelPeriodo(idfinca: number, inicio: string, fin: string) {
     return this.ds.query(
-      `WITH base AS (
-         SELECT a.idempleado,
-                COALESCE(a.horastrabajadas, 0)    AS horas,
-                COALESCE(a.jornadastrabajadas, 0) AS jornadas,
-                CASE WHEN COALESCE(a.horastrabajadas, 0) = 0
-                      AND COALESCE(a.jornadastrabajadas, 0) = 0
-                      AND a.estado ILIKE 'completad%'
-                     THEN COALESCE(a.pagoacordado, 0) ELSE 0 END AS fijo,
-                COALESCE(e.montoporhora, 0)   AS valorhora,
-                COALESCE(e.montoporjornal, 0) AS valorjornal
+      `WITH dias AS (
+         SELECT a.idempleado, ((x.t - interval '5 hours')::date) AS dia
            FROM asignacion_tarea a
-           JOIN tarea t    ON t.idtarea = a.idtarea AND t.idfinca = a.idfinca
-           JOIN empleado e ON e.idusuario = a.idempleado
-          WHERE a.idfinca = $1 AND t.fechaprogramada BETWEEN $2::date AND $3::date
+          CROSS JOIN LATERAL (VALUES (a.fechainicio), (a.fechafin)) AS x(t)
+          WHERE a.idfinca = $1 AND x.t IS NOT NULL
+            AND ((x.t - interval '5 hours')::date) BETWEEN $2::date AND $3::date
        )
-       SELECT idempleado,
-              SUM(horas)::float8 AS horas, SUM(jornadas)::float8 AS jornadas,
-              valorhora::float8 AS valorhora, valorjornal::float8 AS valorjornal,
-              SUM(fijo)::float8 AS fijo
-         FROM base
-        GROUP BY idempleado, valorhora, valorjornal
-       HAVING SUM(horas) > 0 OR SUM(jornadas) > 0 OR SUM(fijo) > 0`,
+       SELECT e.idusuario AS idempleado, e.tipopago, e.valorpago::float8 AS valorpago,
+              (SELECT count(DISTINCT d.dia) FROM dias d WHERE d.idempleado = e.idusuario)::int AS diastrabajados
+         FROM empleado e
+         JOIN finca_usuario fu ON fu.idusuario = e.idusuario AND fu.idfinca = $1 AND fu.rol = 'empleado' AND fu.activo = true
+        WHERE e.valorpago > 0`,
       [idfinca, inicio, fin],
     );
   }
@@ -87,11 +84,15 @@ export class NominaService {
       );
 
       let total = 0;
-      const detalle = lineas.map((l: any) => {
-        const bruto = r2(l.horas * l.valorhora + l.jornadas * l.valorjornal + l.fijo);
-        total += bruto;
-        return { ...l, bruto };
-      });
+      const detalle = lineas
+        .map((l: any) => {
+          const unidades = unidadesDePago(l.tipopago, inicio, fin, l.diastrabajados);
+          const bruto = brutoDePago(unidades, l.valorpago);
+          return { idempleado: l.idempleado, tipopago: l.tipopago, unidades, valor: l.valorpago, bruto };
+        })
+        // Quien cobra por día y no trabajó ningún día del período no genera línea
+        .filter((d: any) => d.bruto > 0);
+      for (const d of detalle) total += d.bruto;
 
       const [n] = await m.query(
         `INSERT INTO nomina (idfinca, fechainicio, fechafin, total, idadmin)
@@ -100,9 +101,9 @@ export class NominaService {
       );
       for (const d of detalle) {
         await m.query(
-          `INSERT INTO nomina_detalle (idnomina, idempleado, horas, jornadas, valorhora, valorjornal, bruto, deducciones, neto)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $7)`,
-          [n.idnomina, d.idempleado, d.horas, d.jornadas, d.valorhora, d.valorjornal, d.bruto],
+          `INSERT INTO nomina_detalle (idnomina, idempleado, horas, jornadas, valorhora, valorjornal, bruto, deducciones, neto, tipopago)
+           VALUES ($1, $2, 0, $3, 0, $4, $5, 0, $5, $6)`,
+          [n.idnomina, d.idempleado, d.unidades, d.valor, d.bruto, d.tipopago],
         );
       }
       return n.idnomina as number;
@@ -131,7 +132,7 @@ export class NominaService {
     const detalles = await this.ds.query(
       `SELECT d.idnominadetalle, d.idempleado, u.primernombre, u.primerapellido,
               d.horas::float8 AS horas, d.jornadas::float8 AS jornadas,
-              d.valorhora::float8 AS valorhora, d.valorjornal::float8 AS valorjornal,
+              d.valorhora::float8 AS valorhora, d.valorjornal::float8 AS valorjornal, d.tipopago,
               d.bruto::float8 AS bruto, d.deducciones::float8 AS deducciones, d.neto::float8 AS neto,
               d.pagado, d.fechapago
          FROM nomina_detalle d JOIN usuario u ON u.idusuario = d.idempleado
@@ -156,6 +157,36 @@ export class NominaService {
       await m.query(`UPDATE nomina_detalle SET deducciones = $2, neto = $3 WHERE idnominadetalle = $1`, [
         idnominadetalle, deducciones, r2(d.bruto - deducciones),
       ]);
+      await m.query(
+        `UPDATE nomina SET total = (SELECT COALESCE(SUM(neto), 0) FROM nomina_detalle WHERE idnomina = $1) WHERE idnomina = $1`,
+        [d.idnomina],
+      );
+      return d.idnomina as number;
+    });
+    return this.obtener(idnomina, idfinca);
+  }
+
+  /**
+   * Corrige los días (o semanas / meses) pagados a un empleado mientras la nómina es un borrador.
+   * El bruto se recalcula con el valor acordado; las deducciones ya puestas se conservan.
+   */
+  async ajustarUnidades(idnominadetalle: number, unidades: number, idfinca: number) {
+    this.exigirOnline();
+    const idnomina = await this.ds.transaction(async (m) => {
+      const [d] = await m.query(
+        `SELECT d.idnomina, d.valorjornal::float8 AS valor, d.deducciones::float8 AS deducciones
+           FROM nomina_detalle d JOIN nomina n ON n.idnomina = d.idnomina
+          WHERE d.idnominadetalle = $1 AND n.idfinca = $2 AND n.estado = 'BORRADOR' FOR UPDATE OF d`,
+        [idnominadetalle, idfinca],
+      );
+      if (!d) throw new NotFoundException('Línea de nómina no encontrada o la nómina ya no es un borrador');
+      const bruto = brutoDePago(unidades, d.valor);
+      if (d.deducciones > bruto) throw new BadRequestException('Las deducciones ya registradas superan el nuevo pago bruto');
+
+      await m.query(
+        `UPDATE nomina_detalle SET jornadas = $2, bruto = $3, neto = $4 WHERE idnominadetalle = $1`,
+        [idnominadetalle, unidades, bruto, r2(bruto - d.deducciones)],
+      );
       await m.query(
         `UPDATE nomina SET total = (SELECT COALESCE(SUM(neto), 0) FROM nomina_detalle WHERE idnomina = $1) WHERE idnomina = $1`,
         [d.idnomina],

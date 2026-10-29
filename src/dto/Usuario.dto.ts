@@ -62,6 +62,10 @@ export class RegistrarEmpleadoDto {
 
   @IsNumber() @Min(0) @IsOptional() montoporhora?: number;
   @IsNumber() @Min(0) @IsOptional() montoporjornal?: number;
+
+  /** Cómo se le paga: por día, semana o mes, y cuánto. */
+  @IsIn(['dia', 'semana', 'mes']) @IsOptional() tipopago?: string;
+  @IsNumber() @Min(0) @IsOptional() valorpago?: number;
 }
 
 /** Compatibilidad con el nombre anterior. */

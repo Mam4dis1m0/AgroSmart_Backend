@@ -11,7 +11,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Not, Repository } from 'typeorm';
 import { filas } from '../../common/sql';
 import { TareaEvidenciaService } from './tarea-evidencia.service';
-import { COSTO_TAREA_SQL, DesgloseCosto, totalCosto } from './costos';
+import { COSTO_TAREA_SQL, FilaCosto, armarCosto } from './costos';
+import { costoHoraDeFinca } from './mano-obra';
+import { fechaColombia } from '../plantillas/fechas';
 import { Tarea } from '../../Entidades/entities/Tarea';
 import { Empleado } from '../../Entidades/entities/Empleado';
 import { Cultivo } from '../../Entidades/entities/Cultivo';
@@ -28,6 +30,13 @@ import { DetalleTarea } from '../../Entidades/entities/DetalleTarea';
 import { OfflineQueueService } from '../../common/offline-queue.service';
 import { SyncService } from '../../common/sync.service';
 import { TenantContext } from '../../auth/tenant-context';
+
+/** Lo recolectado en una tarea de cosecha. */
+export interface DatosCosecha {
+  cantidad: number;
+  unidad?: string | null;
+  calidad?: string | null;
+}
 
 @Injectable()
 export class TareasService {
@@ -600,15 +609,17 @@ export class TareasService {
     }
   }
 
-  /** Costo real de la tarea: insumos usados + mano de obra (tiempo × tarifa, o pago acordado) + transporte. */
+  /** Costo real de la tarea: insumos usados + mano de obra (horas trabajadas × costo por hora de la finca) + transporte. */
   private async calcularCostoReal(idtarea: number): Promise<number> {
-    const [r] = filas<DesgloseCosto>(await this.repo.manager.query(COSTO_TAREA_SQL, [idtarea, this.idfinca]));
-    return totalCosto(r);
+    const consulta = (q: string, par?: any[]) => this.repo.manager.query(q, par);
+    const [r] = filas<FilaCosto>(await consulta(COSTO_TAREA_SQL, [idtarea, this.idfinca]));
+    return armarCosto(r, await costoHoraDeFinca(consulta, this.idfinca)).total;
   }
 
   // ── completar ─────────────────────────────────────────────────────────────
   // notificarTareaCompletada sigue recibiendo 3 argumentos (emailAdmin, nombreTarea, nombreEmpleado).
-  async completar(idAsignacion: number, at?: string | null): Promise<AsignacionTarea> {
+  async completar(idAsignacion: number, at?: string | null, cosecha?: DatosCosecha | null): Promise<AsignacionTarea> {
+    const datosCosecha = this.validarCosecha(cosecha);
     const asignacion = await this.asignacionPropia(idAsignacion);
     const fin = this.instante(at);
 
@@ -638,6 +649,9 @@ export class TareasService {
       }
     }
 
+    // Tarea de cosecha: lo recolectado queda en el módulo de cosechas, ligado a la tarea y a quien lo recogió
+    if (datosCosecha) await this.registrarCosecha(asignacion, fin, datosCosecha);
+
     // Aviso dentro de la app para quien asignó
     await this.notificar(
       asignacion.idadminasignador?.idusuario,
@@ -663,10 +677,49 @@ export class TareasService {
     return asignacion;
   }
 
+  /** Cantidad obtenida en una tarea de cosecha (la enviada por la app, ya normalizada). */
+  private validarCosecha(c?: DatosCosecha | null): DatosCosecha | null {
+    if (!c || c.cantidad === undefined || c.cantidad === null || (c.cantidad as unknown) === '') return null;
+    const cantidad = Number(c.cantidad);
+    if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      throw new BadRequestException('La cantidad cosechada debe ser un número mayor que cero');
+    }
+    return {
+      cantidad,
+      unidad: (c.unidad ?? 'kg').toString().trim().slice(0, 20) || 'kg',
+      calidad: c.calidad ? c.calidad.toString().trim().slice(0, 50) : null,
+    };
+  }
+
+  private async registrarCosecha(asignacion: AsignacionTarea, fin: Date, c: DatosCosecha) {
+    const idtarea = asignacion.idtarea?.idtarea;
+    if (!idtarea) return;
+    try {
+      await this.repo.manager.query(
+        `INSERT INTO cosecha (idfinca, idcultivo, fechacosecha, cantidad, unidad, calidad, observaciones, idadminregistro, idtarea, idempleado)
+         SELECT t.idfinca, t.idcultivo, $3::date, $4, $5, $6, $7, $8, t.idtarea, $9
+           FROM tarea t WHERE t.idtarea = $1 AND t.idfinca = $2 AND t.idcultivo IS NOT NULL`,
+        [
+          idtarea, this.idfinca, fechaColombia(fin), c.cantidad, c.unidad, c.calidad ?? null,
+          `Tarea #${idtarea}: ${asignacion.idtarea?.tipoactividad ?? 'cosecha'}`,
+          asignacion.idadminasignador?.idusuario ?? null,
+          asignacion.idempleado?.idusuario ?? null,
+        ],
+      );
+    } catch (err: any) {
+      // La tarea ya quedó completada; la cosecha se puede registrar a mano en Producción › Cosechas
+      this.logger.error(`No se pudo registrar la cosecha de la tarea #${idtarea}: ${err?.message}`);
+    }
+  }
+
   async completarConEvidencia(idTarea: number, body: any, fotoPath: string | null) {
     // Del cliente solo se acepta lo que escribe la persona (observaciones), la asignación y la hora
     // real del toque; actividad, fecha, empleado y lote salen de la base de datos.
     const { observaciones, idasigtarea, at } = body;
+    // La cantidad cosechada viaja como campos del formulario multipart
+    const cosecha: DatosCosecha | null = body.cosecha_cantidad
+      ? { cantidad: Number(String(body.cosecha_cantidad).replace(',', '.')), unidad: body.cosecha_unidad, calidad: body.cosecha_calidad }
+      : null;
 
     const tarea = await this.repo.findOne({
       where: { idtarea: idTarea, idfinca: this.idfinca },
@@ -685,7 +738,7 @@ export class TareasService {
         throw new BadRequestException('La asignación no corresponde a esta tarea');
       }
       idEmpleado = asig.idempleado?.idusuario ?? idEmpleado;
-      await this.completar(Number(idasigtarea), at);
+      await this.completar(Number(idasigtarea), at, cosecha);
     } else {
       await this.update(idTarea, { estado: 'Completado' } as any);
     }
