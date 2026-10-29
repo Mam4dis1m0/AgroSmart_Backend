@@ -85,20 +85,12 @@ export class MarketplaceService {
     return min > 0 ? new Date(Date.now() + min * 60_000) : null;
   }
 
-  /** Carrito/wishlist: compradores siempre; administradores solo con Premium (CU-46). */
+  /** Compradores y administradores pueden usar el carrito y la lista de deseos. */
   private async exigirCarrito(user: AuthUser): Promise<void> {
-    if (user.rol === 'comprador') return;
-    if (
-      user.rol === 'admin' &&
-      user.idfinca !== null &&
-      (await this.planes.tieneFuncion(user.idfinca, 'marketplace_premium'))
-    )
-      return;
+    if (user.rol === 'comprador' || user.rol === 'admin') return;
     throw new ForbiddenException({
       statusCode: 403,
-      code: 'PLAN_PREMIUM_REQUERIDO',
-      message: 'El carrito y las listas de deseos son una función Premium.',
-      funcion: 'marketplace_premium',
+      message: 'Esta función está disponible para compradores y administradores.',
     });
   }
 
@@ -505,6 +497,11 @@ export class MarketplaceService {
     if (!l || l.estado !== 'PUBLICADO' || enEspera) {
       throw new NotFoundException('El producto no está disponible');
     }
+    if (user.rol === 'admin' && user.idfinca === l.idfinca) {
+      throw new BadRequestException(
+        'No puedes comprar un producto publicado por tu propia finca',
+      );
+    }
     if (dto.cantidad > l.volumen) {
       throw new BadRequestException(
         `La cantidad excede el volumen disponible (${l.volumen})`,
@@ -697,7 +694,8 @@ export class MarketplaceService {
         [idorden],
       );
       const esComprador =
-        user.rol === 'comprador' && o?.idcomprador === user.idusuario;
+        (user.rol === 'comprador' || user.rol === 'admin') &&
+        o?.idcomprador === user.idusuario;
       const esVendedor = user.rol === 'admin' && o?.idfinca === user.idfinca;
       if (!o || (!esComprador && !esVendedor))
         throw new NotFoundException('Orden no encontrada');
@@ -785,7 +783,7 @@ export class MarketplaceService {
 
   async guardarEnCarrito(dto: CarritoItemDto, user: AuthUser) {
     await this.exigirCarrito(user);
-    await this.exigirListadoPublicado(dto.idlistado);
+    await this.exigirListadoPublicado(dto.idlistado, user);
     await this.ds.query(
       `INSERT INTO carrito_item (idusuario, idlistado, cantidad) VALUES ($1, $2, $3)
        ON CONFLICT (idusuario, idlistado) DO UPDATE SET cantidad = EXCLUDED.cantidad`,
@@ -846,7 +844,7 @@ export class MarketplaceService {
 
   async guardarEnWishlist(idlistado: number, user: AuthUser) {
     await this.exigirCarrito(user);
-    await this.exigirListadoPublicado(idlistado);
+    await this.exigirListadoPublicado(idlistado, user);
     await this.ds.query(
       `INSERT INTO wishlist_item (idusuario, idlistado) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
       [user.idusuario, idlistado],
@@ -863,11 +861,19 @@ export class MarketplaceService {
     return this.verWishlist(user);
   }
 
-  private async exigirListadoPublicado(idlistado: number): Promise<void> {
+  private async exigirListadoPublicado(
+    idlistado: number,
+    user: AuthUser,
+  ): Promise<void> {
     const [l] = await this.ds.query(
-      `SELECT 1 FROM listado WHERE idlistado = $1 AND estado = 'PUBLICADO'`,
+      `SELECT idfinca FROM listado WHERE idlistado = $1 AND estado = 'PUBLICADO'`,
       [idlistado],
     );
     if (!l) throw new NotFoundException('El producto no está disponible');
+    if (user.rol === 'admin' && user.idfinca === l.idfinca) {
+      throw new BadRequestException(
+        'No puedes guardar productos publicados por tu propia finca',
+      );
+    }
   }
 }

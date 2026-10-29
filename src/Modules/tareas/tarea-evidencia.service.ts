@@ -116,6 +116,11 @@ export class TareaEvidenciaService {
       idasigtarea?: number | null;
     } = {},
   ): Promise<Evidencia> {
+    if (user.rol !== 'empleado') {
+      throw new ForbiddenException(
+        'Solo el trabajador asignado puede enviar evidencias',
+      );
+    }
     await this.acceso(idfinca, idtarea, user);
     const subida = await cloudinary.uploader.upload(ruta, {
       folder: `agrosmart/evidencias/finca_${idfinca}`,

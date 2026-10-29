@@ -29,7 +29,7 @@ import { MarketplaceService } from './marketplace.service';
  * Marketplace MarketFields.
  *  · Catálogo: cualquier usuario autenticado (comprador, administrador, empleado) — datos públicos.
  *  · Vender / gestionar ventas: administrador de finca.
- *  · Comprar / mis compras: comprador externo.
+ *  · Comprar / mis compras: comprador externo y administrador que también compra.
  * Las rutas del comprador son @SinFinca: no pertenece a ninguna finca (RNF-20).
  */
 @Controller('api/v1/marketplace')
@@ -106,14 +106,14 @@ export class MarketplaceController {
 
   // ── Órdenes de compra ─────────────────────────────────────────────────────
   @Post('ordenes')
-  @Roles('comprador')
+  @Roles('admin', 'comprador')
   @SinFinca()
   crearOrden(@Body() dto: CreateOrdenDto, @CurrentUser() user: AuthUser) {
     return this.service.crearOrden(dto, user);
   }
 
   @Get('ordenes/mis-compras')
-  @Roles('comprador')
+  @Roles('admin', 'comprador')
   @SinFinca()
   misCompras(@CurrentUser() user: AuthUser) {
     return this.service.misCompras(user);
@@ -154,7 +154,7 @@ export class MarketplaceController {
     return this.service.cancelarOrden(id, user);
   }
 
-  // ── Carrito y wishlist (Premium) ──────────────────────────────────────────
+  // ── Carrito y wishlist ────────────────────────────────────────────────────
   @Get('carrito')
   @Roles('admin', 'comprador')
   @SinFinca()
@@ -170,7 +170,7 @@ export class MarketplaceController {
   }
 
   @Post('carrito/ordenar')
-  @Roles('comprador')
+  @Roles('admin', 'comprador')
   @SinFinca()
   ordenarCarrito(@CurrentUser() user: AuthUser) {
     return this.service.ordenarCarrito(user);

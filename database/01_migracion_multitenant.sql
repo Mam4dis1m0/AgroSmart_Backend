@@ -377,7 +377,7 @@ CREATE TABLE IF NOT EXISTS public.orden_compra (
   updated_at          timestamptz NOT NULL DEFAULT now()
 );
 
--- Carrito y wishlist (Premium, CU-46)
+-- Carrito y wishlist (CU-46)
 CREATE TABLE IF NOT EXISTS public.carrito_item (
   idcarritoitem  serial PRIMARY KEY,
   idusuario      integer NOT NULL REFERENCES public.usuario(idusuario) ON DELETE CASCADE,
