@@ -123,7 +123,11 @@ export class Tarea {
   })
   costoreal: number | null;
 
-  @Column('boolean', { name: 'generadaauto', default: () => 'false' })
+  /** Personas que necesita en su lote: personas por hectárea × hectáreas (null en tareas manuales). */
+  @Column("integer", { name: "personasnecesarias", nullable: true })
+  personasnecesarias: number | null;
+
+  @Column("boolean", { name: "generadaauto", default: () => "false" })
   generadaauto: boolean;
 
   @Column('character varying', { name: 'etapa', nullable: true, length: 50 })

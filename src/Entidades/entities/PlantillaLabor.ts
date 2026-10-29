@@ -56,16 +56,16 @@ export class PlantillaLabor {
   @Column('integer', { name: 'diasfin', nullable: true })
   diasfin: number | null;
 
-  @Column('numeric', {
-    name: 'horasestimadas',
-    nullable: true,
-    precision: 10,
-    scale: 2,
-    transformer: numericTransformer,
-  })
+  /** Horas que se espera tarde el grupo en TERMINAR la tarea (no cambian con el tamaño del lote). */
+  @Column("numeric", { name: "horasestimadas", nullable: true, precision: 10, scale: 2, transformer: numericTransformer })
   horasestimadas: number | null;
 
-  @Column('integer', { name: 'numpersonas', default: () => '1' })
+  /** Personas sugeridas POR HECTÁREA: en un lote de 3 ha con 2 por hectárea se sugieren 6. */
+  @Column("numeric", { name: "personasporhectarea", precision: 6, scale: 2, default: () => "1", transformer: numericTransformer })
+  personasporhectarea: number;
+
+  /** Anterior «personas necesarias»; se conserva por compatibilidad y ya no se usa. */
+  @Column("integer", { name: "numpersonas", default: () => "1" })
   numpersonas: number;
 
   @Column('character varying', {

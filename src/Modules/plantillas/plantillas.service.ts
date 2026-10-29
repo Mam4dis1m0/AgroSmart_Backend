@@ -26,17 +26,17 @@ export interface ItemPlan {
   etapa: string | null;
   fecha: string | null;
   horasestimadas: number | null;
+  /** Personas que necesita ESTE cultivo: personas por hectárea × hectáreas, redondeado hacia arriba. */
   numpersonas: number;
+  personasPorHectarea: number;
   prioridad: string;
   esrecurrente: boolean;
   frecuenciadias: number | null;
   modalidadpago: string;
   costoestimado: number;
   insumos: { tipoinsumo: string | null; unidad: string | null }[];
-  /** Hectáreas del lote del cultivo; las horas y cantidades de la plantilla (por hectárea) se multiplican por ellas. */
+  /** Hectáreas del lote del cultivo: de ellas salen las personas necesarias y las cantidades de insumo (por hectárea). */
   hectareas: number | null;
-  /** Horas de la plantilla para 1 hectárea, antes de escalar. */
-  horasPorHectarea: number | null;
   /** La fecha original ya había pasado y se corrió a la próxima repetición (cultivo ya establecido). */
   ajustada: boolean;
   /** La fecha ya pasó (cultivo sembrado antes): se muestra pero no se marca por defecto. */
@@ -261,8 +261,9 @@ export class PlantillasService {
   }
 
   /**
-   * Horas y costo de una labor para ESTE cultivo. Las plantillas están expresadas para 1 hectárea:
-   * se multiplican por las hectáreas del lote. Mano de obra = horas × personas × costo por hora de la finca.
+   * Personas, horas y costo de una labor para ESTE cultivo. La plantilla trae personas POR HECTÁREA y las
+   * horas que tarda el grupo en terminar: en un lote más grande se necesitan más personas, no más horas.
+   * Mano de obra = personas × horas × costo por hora de la finca.
    */
   private estimar(
     p: PlantillaLabor,
@@ -271,16 +272,11 @@ export class PlantillasService {
     costoInsumo1ha: number,
   ) {
     const factor = ha ?? 1;
-    const horas =
-      p.horasestimadas === null
-        ? null
-        : Math.round(p.horasestimadas * factor * 100) / 100;
-    const costo =
-      Math.round(
-        ((horas ?? 0) * p.numpersonas * costoHora + costoInsumo1ha * factor) *
-          100,
-      ) / 100;
-    return { horas, costo };
+    const porHectarea = p.personasporhectarea ?? p.numpersonas ?? 1;
+    const personas = Math.max(1, Math.ceil(porHectarea * factor - 1e-9));
+    const horas = p.horasestimadas;
+    const costo = Math.round(((horas ?? 0) * personas * costoHora + costoInsumo1ha * factor) * 100) / 100;
+    return { horas, personas, costo };
   }
 
   /** Vista previa: qué tareas se crearían, sin crear nada. */
@@ -325,24 +321,17 @@ export class PlantillasService {
     const hoyISO = hoy();
     const items: ItemPlan[] = conInsumos.map((p) => {
       const f = primeraFecha(p, cultivo, hoyISO);
-      const { horas, costo } = this.estimar(
-        p,
-        ha,
-        costoHora,
-        costos.get(p.idplantilla) ?? 0,
-      );
-      const ref = desdeBase
-        ? p.idplantilla
-        : (p.idplantillabase ?? p.idplantilla);
+      const { horas, personas, costo } = this.estimar(p, ha, costoHora, costos.get(p.idplantilla) ?? 0);
+      const ref = desdeBase ? p.idplantilla : p.idplantillabase ?? p.idplantilla;
       return {
         idplantilla: p.idplantilla,
         actividad: p.actividad,
         etapa: p.etapa,
         fecha: f.fecha,
         horasestimadas: horas,
-        horasPorHectarea: p.horasestimadas,
         hectareas: ha,
-        numpersonas: p.numpersonas,
+        numpersonas: personas,
+        personasPorHectarea: p.personasporhectarea ?? p.numpersonas ?? 1,
         prioridad: p.prioridad,
         esrecurrente: p.esrecurrente,
         frecuenciadias: p.frecuenciadias,
@@ -429,17 +418,9 @@ export class PlantillasService {
               elegidasPorElCliente.has(p.idplantillabase))
           : !f.pasada;
         if (!elegida) continue;
-        if (yaExiste || !f.fecha) {
-          omitidas++;
-          continue;
-        }
+        if (yaExiste || !f.fecha) { omitidas++; continue; }
 
-        const { horas, costo } = this.estimar(
-          p,
-          ha,
-          costoHora,
-          costos.get(p.idplantilla) ?? 0,
-        );
+        const { horas, personas, costo } = this.estimar(p, ha, costoHora, costos.get(p.idplantilla) ?? 0);
         creadas.push(
           await m.save(
             Tarea,
@@ -452,6 +433,7 @@ export class PlantillasService {
               frecuenciadias: p.esrecurrente ? p.frecuenciadias : null,
               prioridad: p.prioridad,
               horasestimadas: horas,
+              personasnecesarias: personas,
               etapa: p.etapa,
               idplantilla: p.idplantilla,
               generadaauto: true,

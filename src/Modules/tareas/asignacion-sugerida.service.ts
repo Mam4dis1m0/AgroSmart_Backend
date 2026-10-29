@@ -63,7 +63,7 @@ export class AsignacionSugeridaService {
   ): Promise<{ lista: Candidato[]; numpersonas: number }> {
     const [t] = filas<{ numpersonas: number }>(
       await this.ds.query(
-        `SELECT COALESCE(p.numpersonas, 1) AS numpersonas
+        `SELECT COALESCE(t.personasnecesarias, CEIL(p.personasporhectarea)::int, p.numpersonas, 1) AS numpersonas
            FROM tarea t LEFT JOIN plantilla_labor p ON p.idplantilla = t.idplantilla
           WHERE t.idtarea = $2 AND t.idfinca = $1`,
         [idfinca, idtarea],

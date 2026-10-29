@@ -77,5 +77,7 @@ export function categoriaDeTipo(tipo?: string | null): string | null {
   return clave ? TIPO_A_CATEGORIA[clave] : null;
 }
 
-export const esCategoria = (c?: string | null): boolean =>
-  !!c && CATEGORIAS.some((x) => x.id === c);
+export const esCategoria = (c?: string | null): boolean => !!c && CATEGORIAS.some((x) => x.id === c);
+
+/** Etapas del ciclo de un cultivo en las que se agrupan las labores. */
+export const ETAPAS = ['Preparación', 'Siembra', 'Crecimiento', 'Mantenimiento', 'Cosecha', 'Postcosecha'] as const;

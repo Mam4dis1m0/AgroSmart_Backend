@@ -223,10 +223,9 @@ describe('TareasService', () => {
 
     beforeEach(() => {
       (mockTareaRepository as any).manager = { query };
-      query.mockReset().mockResolvedValue([]);
-      mockAsignacionTareaRepository.save.mockImplementation((a) =>
-        Promise.resolve(a),
-      );
+      // La tarea tiene cultivo (el cultivo 3); el resto de consultas no devuelve filas
+      query.mockReset().mockImplementation(async (sql: string) => (String(sql).includes('SELECT idcultivo') ? [{ idcultivo: 3 }] : []));
+      mockAsignacionTareaRepository.save.mockImplementation((a) => Promise.resolve(a));
     });
 
     it('registra lo recolectado en Cosechas, ligado a la tarea y a quien lo recogió', async () => {
@@ -255,6 +254,14 @@ describe('TareasService', () => {
         1,
         5,
       ]);
+    });
+
+    it('si la tarea no tiene cultivo avisa en vez de perder en silencio lo recolectado, y no completa', async () => {
+      mockAsignacionTareaRepository.findOne.mockResolvedValue(asig());
+      query.mockImplementation(async (sql: string) => (String(sql).includes('SELECT idcultivo') ? [{ idcultivo: null }] : []));
+
+      await expect(conSesion(sesionAdmin, () => service.completar(10, null, { cantidad: 50 }))).rejects.toThrow('no tiene cultivo');
+      expect(mockAsignacionTareaRepository.save).not.toHaveBeenCalled();
     });
 
     it('rechaza una cantidad inválida sin completar la asignación', async () => {
@@ -296,6 +303,40 @@ describe('TareasService', () => {
         String(sql).includes('INSERT INTO cosecha'),
       );
       expect(insercion![1][4]).toBe('kg');
+    });
+  });
+
+  describe('create() de una tarea de cosecha', () => {
+    it('exige cultivo: sin él no habría a qué cosecha pertenece lo recolectado', async () => {
+      await expect(conSesion(sesionAdmin, () => service.create({ tipoactividad: 'Cosecha de maíz' } as any))).rejects.toThrow('necesita un cultivo');
+      await expect(conSesion(sesionAdmin, () => service.create({ tipoactividad: 'cosecha' } as any))).rejects.toThrow('necesita un cultivo');
+    });
+
+    it('una tarea que no es de cosecha no necesita cultivo', async () => {
+      mockSyncService.isOnline.mockResolvedValue(false);
+      const r: any = await conSesion(sesionAdmin, () => service.create({ tipoactividad: 'Riego' } as any));
+      expect(r._offline).toBe(true);
+    });
+  });
+
+  describe('update() hacia una tarea de cosecha', () => {
+    it('no permite cambiar a «Cosecha» una tarea que no tiene cultivo', async () => {
+      mockSyncService.isOnline.mockResolvedValue(true);
+      mockTareaRepository.findOneBy.mockResolvedValue({ idtarea: 5, estado: 'Pendiente' });
+      (mockTareaRepository as any).manager = { query: jest.fn().mockResolvedValue([{ idcultivo: null }]) };
+
+      await expect(conSesion(sesionAdmin, () => service.update(5, { tipoactividad: 'Cosecha' } as any))).rejects.toThrow('necesita un cultivo');
+    });
+
+    it('si la tarea ya tiene cultivo, sí puede ser de cosecha', async () => {
+      mockSyncService.isOnline.mockResolvedValue(true);
+      mockTareaRepository.findOneBy.mockResolvedValue({ idtarea: 5, estado: 'Pendiente' });
+      mockTareaRepository.save.mockImplementation((t) => Promise.resolve(t));
+      (mockTareaRepository as any).manager = { query: jest.fn().mockResolvedValue([{ idcultivo: 3 }]) };
+
+      const r: any = await conSesion(sesionAdmin, () => service.update(5, { tipoactividad: 'Cosecha' } as any));
+
+      expect(r.tipoactividad).toBe('Cosecha');
     });
   });
 
