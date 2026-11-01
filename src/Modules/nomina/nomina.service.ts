@@ -149,7 +149,7 @@ export class NominaService {
       throw new NotFoundException('Nómina no encontrada en esta finca');
 
     const detalles = await this.ds.query(
-      `SELECT d.idnominadetalle, d.idempleado, u.primernombre, u.primerapellido,
+      `SELECT d.idnominadetalle, d.idempleado, u.primernombre, u.primerapellido, u.fotoperfil,
               d.horas::float8 AS horas, d.jornadas::float8 AS jornadas,
               d.valorhora::float8 AS valorhora, d.valorjornal::float8 AS valorjornal, d.tipopago,
               d.bruto::float8 AS bruto, d.deducciones::float8 AS deducciones, d.neto::float8 AS neto,

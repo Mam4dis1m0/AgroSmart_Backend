@@ -17,18 +17,25 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { v2 as cloudinary } from 'cloudinary';
 import { DataSource } from 'typeorm';
+import { PlanService } from '../../auth/plan.service';
 import { AuthUser } from '../../auth/tenant-context';
 import { filas } from '../../common/sql';
-import {
-  CrearHiloDto,
-  EnviarMensajeDto,
-  ListarMensajesQueryDto,
-} from '../../dto/mensajeria.dto';
+import { CrearHiloDto, EnviarAdjuntoDto, EnviarMensajeDto, ListarMensajesQueryDto } from '../../dto/mensajeria.dto';
 import { MensajeriaGateway } from './mensajeria.gateway';
 
 const LIMITE_POR_DEFECTO = 50;
 const PREVIEW_NOTIFICACION = 120;
+const MAX_IMAGEN_BYTES = 6 * 1024 * 1024;
+const MAX_AUDIO_BYTES = 4 * 1024 * 1024;
+const MAX_AUDIO_SEG = 120;
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 @Injectable()
 export class MensajeriaService {
@@ -36,15 +43,20 @@ export class MensajeriaService {
 
   constructor(
     private readonly ds: DataSource,
+    private readonly planes: PlanService,
     private readonly gateway: MensajeriaGateway,
   ) {}
 
   private exigirOnline() {
     if (!this.ds.isInitialized) {
-      throw new ServiceUnavailableException(
-        'La mensajería requiere conexión a internet',
-      );
+      throw new ServiceUnavailableException('La mensajería requiere conexión a internet');
     }
+  }
+
+  /** Mismo criterio que el catálogo: el acceso anticipado es solo para fincas Premium. */
+  private async esPremium(user: AuthUser): Promise<boolean> {
+    if (user.rol === 'comprador' || user.idfinca === null) return false;
+    return this.planes.tieneFuncion(user.idfinca, 'early_access');
   }
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -54,24 +66,22 @@ export class MensajeriaService {
   /** «Chatear con el vendedor»: crea el hilo o devuelve el existente (idempotente). */
   async abrirHilo(dto: CrearHiloDto, user: AuthUser) {
     this.exigirOnline();
+    const premium = await this.esPremium(user);
 
-    // Solo se puede escribir sobre ofertas que el usuario puede ver en el catálogo (mismo criterio:
-    // las de vendedores Freemium en espera aún no son visibles), o sobre una oferta en la que ya
-    // tiene una orden (aunque luego se haya pausado).
+    // Solo se puede escribir sobre ofertas que el usuario puede ver en el catálogo,
+    // o sobre una oferta en la que ya tiene una orden (aunque luego se haya pausado).
     const [l] = await this.ds.query(
       `SELECT l.idlistado, l.idvendedor
          FROM listado l
         WHERE l.idlistado = $1
           AND ( (l.estado = 'PUBLICADO'
-                 AND (l.earlyaccesshasta IS NULL OR l.earlyaccesshasta <= now() OR l.idfinca = $2::int))
-                OR EXISTS (SELECT 1 FROM orden_compra o WHERE o.idlistado = l.idlistado AND o.idcomprador = $3::int) )`,
-      [dto.idlistado, user.idfinca, user.idusuario],
+                 AND (l.earlyaccesshasta IS NULL OR l.earlyaccesshasta <= now() OR $2::boolean OR l.idfinca = $3::int))
+                OR EXISTS (SELECT 1 FROM orden_compra o WHERE o.idlistado = l.idlistado AND o.idcomprador = $4::int) )`,
+      [dto.idlistado, premium, user.idfinca, user.idusuario],
     );
     if (!l) throw new NotFoundException('El producto no está disponible');
     if (l.idvendedor === user.idusuario) {
-      throw new BadRequestException(
-        'No puedes iniciar una conversación contigo mismo',
-      );
+      throw new BadRequestException('No puedes iniciar una conversación contigo mismo');
     }
 
     if (dto.idorden !== undefined) {
@@ -79,8 +89,7 @@ export class MensajeriaService {
         `SELECT 1 FROM orden_compra WHERE idorden = $1 AND idlistado = $2 AND idcomprador = $3`,
         [dto.idorden, dto.idlistado, user.idusuario],
       );
-      if (!orden)
-        throw new BadRequestException('Esa orden no corresponde a esta oferta');
+      if (!orden) throw new BadRequestException('Esa orden no corresponde a esta oferta');
     }
 
     // Idempotente: si ya existía, solo enlaza la orden en caso de que aún no tuviera una
@@ -112,15 +121,11 @@ export class MensajeriaService {
 
   /**
    * Una sola consulta para la bandeja (idhilo = null) y para el detalle de un hilo.
-   * Nunca expone correo, cédula ni foto de perfil de la otra persona.
+   * Nunca expone correo ni cédula de la otra persona. Sí devuelve su foto de perfil (otroFoto).
    * El teléfono SOLO se devuelve en el detalle de un hilo (idhilo != null): lo usa la app
    * para enviar mensajes por SMS cuando no hay internet.
    */
-  private resumenHilos(
-    user: AuthUser,
-    idhilo: number | null,
-    soloConMensajes: boolean,
-  ) {
+  private resumenHilos(user: AuthUser, idhilo: number | null, soloConMensajes: boolean) {
     return this.ds.query(
       `SELECT h.idhilo, h.idlistado, h.idorden, h.ultimo_mensaje_at AS "ultimoMensajeAt",
               CASE WHEN h.idcomprador = $1 THEN 'comprador' ELSE 'vendedor' END AS "miRol",
@@ -130,15 +135,17 @@ export class MensajeriaService {
               o.estado AS "estadoOrden",
               u.idusuario AS "otroId",
               NULLIF(trim(concat_ws(' ', u.primernombre, u.primerapellido)), '') AS "otroNombre",
+              u.fotoperfil AS "otroFoto",
               CASE WHEN $2::int IS NOT NULL THEN u.telefono END AS "otroTelefono",
-              lm.contenido AS "ultimoContenido", lm.idremitente AS "ultimoRemitente",
+              COALESCE(lm.contenido, CASE lm.tipo WHEN 'IMAGEN' THEN '📷 Foto' WHEN 'AUDIO' THEN '🎤 Audio' END) AS "ultimoContenido",
+              lm.idremitente AS "ultimoRemitente",
               (SELECT COUNT(*)::int FROM mensaje_mercado m
                 WHERE m.idhilo = h.idhilo AND m.idremitente <> $1 AND m.leido_at IS NULL) AS "noLeidos"
          FROM hilo_mercado h
          JOIN listado l ON l.idlistado = h.idlistado
          JOIN usuario u ON u.idusuario = CASE WHEN h.idcomprador = $1 THEN h.idvendedor ELSE h.idcomprador END
          LEFT JOIN orden_compra o ON o.idorden = h.idorden
-         LEFT JOIN LATERAL (SELECT contenido, idremitente FROM mensaje_mercado
+         LEFT JOIN LATERAL (SELECT contenido, tipo, idremitente FROM mensaje_mercado
                              WHERE idhilo = h.idhilo ORDER BY idmensaje DESC LIMIT 1) lm ON true
         WHERE (h.idcomprador = $1 OR h.idvendedor = $1)
           AND ($2::int IS NULL OR h.idhilo = $2::int)
@@ -157,13 +164,7 @@ export class MensajeriaService {
       [idhilo, user.idusuario],
     );
     if (!h) throw new NotFoundException('Conversación no encontrada');
-    return h as {
-      idhilo: number;
-      idcomprador: number;
-      idvendedor: number;
-      idfinca: number;
-      titulo: string;
-    };
+    return h as { idhilo: number; idcomprador: number; idvendedor: number; idfinca: number; titulo: string };
   }
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -171,11 +172,7 @@ export class MensajeriaService {
   // ═════════════════════════════════════════════════════════════════════════
 
   /** Devuelve siempre en orden cronológico (el más antiguo primero). */
-  async listarMensajes(
-    idhilo: number,
-    q: ListarMensajesQueryDto,
-    user: AuthUser,
-  ) {
+  async listarMensajes(idhilo: number, q: ListarMensajesQueryDto, user: AuthUser) {
     this.exigirOnline();
     await this.hiloDelUsuario(idhilo, user);
     const limite = q.limite ?? LIMITE_POR_DEFECTO;
@@ -183,14 +180,14 @@ export class MensajeriaService {
     let rows: any[];
     if (q.despues !== undefined) {
       rows = await this.ds.query(
-        `SELECT idmensaje, idremitente, contenido, created_at, leido_at
+        `SELECT idmensaje, idremitente, tipo, contenido, adjunto_url, duracion_seg, created_at, leido_at
            FROM mensaje_mercado WHERE idhilo = $1 AND idmensaje > $2
           ORDER BY idmensaje ASC LIMIT $3`,
         [idhilo, q.despues, limite],
       );
     } else {
       rows = await this.ds.query(
-        `SELECT idmensaje, idremitente, contenido, created_at, leido_at
+        `SELECT idmensaje, idremitente, tipo, contenido, adjunto_url, duracion_seg, created_at, leido_at
            FROM mensaje_mercado WHERE idhilo = $1 AND ($2::bigint IS NULL OR idmensaje < $2::bigint)
           ORDER BY idmensaje DESC LIMIT $3`,
         [idhilo, q.antes ?? null, limite],
@@ -203,17 +200,11 @@ export class MensajeriaService {
   async enviar(idhilo: number, dto: EnviarMensajeDto, user: AuthUser) {
     this.exigirOnline();
     const hilo = await this.hiloDelUsuario(idhilo, user);
-    const destino =
-      hilo.idcomprador === user.idusuario ? hilo.idvendedor : hilo.idcomprador;
+    const destino = hilo.idcomprador === user.idusuario ? hilo.idvendedor : hilo.idcomprador;
 
-    const [dest] = await this.ds.query(
-      `SELECT activo FROM usuario WHERE idusuario = $1`,
-      [destino],
-    );
+    const [dest] = await this.ds.query(`SELECT activo FROM usuario WHERE idusuario = $1`, [destino]);
     if (!dest || dest.activo === false) {
-      throw new ConflictException(
-        'La otra persona ya no está disponible en la plataforma',
-      );
+      throw new ConflictException('La otra persona ya no está disponible en la plataforma');
     }
 
     // Guardar mensaje y avanzar el hilo en una sola sentencia (atómica)
@@ -222,32 +213,106 @@ export class MensajeriaService {
         `WITH nuevo AS (
            INSERT INTO mensaje_mercado (idhilo, idremitente, contenido)
            VALUES ($1, $2, $3)
-           RETURNING idmensaje, idremitente, contenido, created_at, leido_at, idhilo
+           RETURNING idmensaje, idremitente, tipo, contenido, adjunto_url, duracion_seg, created_at, leido_at, idhilo
          )
          UPDATE hilo_mercado h SET ultimo_mensaje_at = nuevo.created_at
            FROM nuevo WHERE h.idhilo = nuevo.idhilo
-         RETURNING nuevo.idmensaje, nuevo.idremitente, nuevo.contenido, nuevo.created_at, nuevo.leido_at`,
+         RETURNING nuevo.idmensaje, nuevo.idremitente, nuevo.tipo, nuevo.contenido, nuevo.adjunto_url, nuevo.duracion_seg, nuevo.created_at, nuevo.leido_at`,
         [idhilo, user.idusuario, dto.contenido],
       ),
     );
 
     // Push a ambos (el emisor puede tener la app abierta en otro dispositivo)
     for (const id of [user.idusuario, destino]) {
-      this.gateway.emitirAUsuario(id, 'mensaje:nuevo', {
-        idhilo,
-        mensaje: this.mapMensaje(row, id),
-      });
+      this.gateway.emitirAUsuario(id, 'mensaje:nuevo', { idhilo, mensaje: this.mapMensaje(row, id) });
     }
     void this.notificar(hilo, destino, user, dto.contenido);
 
     return this.mapMensaje(row, user.idusuario);
   }
 
+  /**
+   * Foto o audio. El archivo se valida (tamaño/duración), se sube a Cloudinary y se guarda
+   * el enlace; luego se empuja por Socket.IO igual que un mensaje de texto.
+   */
+  async enviarAdjunto(
+    idhilo: number,
+    archivo: Express.Multer.File | undefined,
+    dto: EnviarAdjuntoDto,
+    user: AuthUser,
+  ) {
+    this.exigirOnline();
+    if (!archivo?.buffer?.length) throw new BadRequestException('Falta el archivo');
+
+    const esAudio = dto.tipo === 'AUDIO';
+    const maximo = esAudio ? MAX_AUDIO_BYTES : MAX_IMAGEN_BYTES;
+    if (archivo.size > maximo) {
+      throw new BadRequestException(`El archivo supera ${Math.round(maximo / 1024 / 1024)} MB`);
+    }
+    if (esAudio && (dto.duracionSeg ?? 0) > MAX_AUDIO_SEG) {
+      throw new BadRequestException(`El audio no puede durar más de ${MAX_AUDIO_SEG} segundos`);
+    }
+
+    // Primero se comprueba que el usuario participa en el hilo: no se sube nada si no.
+    const hilo = await this.hiloDelUsuario(idhilo, user);
+    const destino = hilo.idcomprador === user.idusuario ? hilo.idvendedor : hilo.idcomprador;
+    const [dest] = await this.ds.query(`SELECT activo FROM usuario WHERE idusuario = $1`, [destino]);
+    if (!dest || dest.activo === false) {
+      throw new ConflictException('La otra persona ya no está disponible en la plataforma');
+    }
+
+    const url = await this.subirArchivo(archivo.buffer, esAudio);
+
+    const [row] = filas(
+      await this.ds.query(
+        `WITH nuevo AS (
+           INSERT INTO mensaje_mercado (idhilo, idremitente, tipo, contenido, adjunto_url, duracion_seg)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING idmensaje, idremitente, tipo, contenido, adjunto_url, duracion_seg, created_at, leido_at, idhilo
+         )
+         UPDATE hilo_mercado h SET ultimo_mensaje_at = nuevo.created_at
+           FROM nuevo WHERE h.idhilo = nuevo.idhilo
+         RETURNING nuevo.idmensaje, nuevo.idremitente, nuevo.tipo, nuevo.contenido, nuevo.adjunto_url, nuevo.duracion_seg, nuevo.created_at, nuevo.leido_at`,
+        [idhilo, user.idusuario, dto.tipo, dto.contenido || null, url, esAudio ? (dto.duracionSeg ?? null) : null],
+      ),
+    );
+
+    for (const id of [user.idusuario, destino]) {
+      this.gateway.emitirAUsuario(id, 'mensaje:nuevo', { idhilo, mensaje: this.mapMensaje(row, id) });
+    }
+    const vista = dto.contenido || (esAudio ? '🎤 Audio' : '📷 Foto');
+    void this.notificar(hilo, destino, user, vista);
+
+    return this.mapMensaje(row, user.idusuario);
+  }
+
+  /** Sube el archivo a Cloudinary (el audio se guarda como "video", así lo clasifica Cloudinary). */
+  private async subirArchivo(buffer: Buffer, esAudio: boolean): Promise<string> {
+    try {
+      return await new Promise<string>((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          {
+            folder: 'agrosmart/chat',
+            resource_type: esAudio ? 'video' : 'image',
+            allowed_formats: esAudio
+              ? ['m4a', 'aac', 'mp3', 'ogg', 'wav', 'webm', 'mp4', '3gp']
+              : ['jpg', 'jpeg', 'png', 'webp', 'heic'],
+            ...(esAudio ? {} : { transformation: [{ width: 1600, crop: 'limit', quality: 'auto' }] }),
+          },
+          (err, res) => (err || !res ? reject(err ?? new Error('Sin respuesta de Cloudinary')) : resolve(res.secure_url)),
+        );
+        stream.end(buffer);
+      });
+    } catch (err) {
+      this.logger.warn(`Fallo al subir adjunto: ${(err as Error).message}`);
+      throw new BadRequestException('No se pudo procesar el archivo. Verifica que sea una foto o un audio válido.');
+    }
+  }
+
   async marcarLeidos(idhilo: number, user: AuthUser) {
     this.exigirOnline();
     const hilo = await this.hiloDelUsuario(idhilo, user);
-    const otro =
-      hilo.idcomprador === user.idusuario ? hilo.idvendedor : hilo.idcomprador;
+    const otro = hilo.idcomprador === user.idusuario ? hilo.idvendedor : hilo.idcomprador;
 
     const leidos = filas<{ idmensaje: string }>(
       await this.ds.query(
@@ -260,11 +325,7 @@ export class MensajeriaService {
 
     if (leidos.length > 0) {
       const hasta = Math.max(...leidos.map((r) => Number(r.idmensaje)));
-      this.gateway.emitirAUsuario(otro, 'mensaje:leido', {
-        idhilo,
-        hasta,
-        por: user.idusuario,
-      });
+      this.gateway.emitirAUsuario(otro, 'mensaje:leido', { idhilo, hasta, por: user.idusuario });
     }
     await this.ds
       .query(
@@ -272,9 +333,7 @@ export class MensajeriaService {
           WHERE tipo = 'MENSAJE_MERCADO' AND idregistro = $1 AND idusuariodestino = $2 AND leida = false`,
         [idhilo, user.idusuario],
       )
-      .catch((err) =>
-        this.logger.warn(`No se pudo limpiar la notificación: ${err.message}`),
-      );
+      .catch((err) => this.logger.warn(`No se pudo limpiar la notificación: ${err.message}`));
 
     return { marcados: leidos.length };
   }
@@ -300,12 +359,7 @@ export class MensajeriaService {
    * mensaje (evita llenar la bandeja). Nunca debe romper el envío.
    */
   private async notificar(
-    hilo: {
-      idhilo: number;
-      idvendedor: number;
-      idfinca: number;
-      titulo: string;
-    },
+    hilo: { idhilo: number; idvendedor: number; idfinca: number; titulo: string },
     destino: number,
     remitente: AuthUser,
     contenido: string,
@@ -316,10 +370,7 @@ export class MensajeriaService {
         [remitente.idusuario],
       );
       const nombre = u?.nombre ?? 'Alguien';
-      const preview =
-        contenido.length > PREVIEW_NOTIFICACION
-          ? `${contenido.slice(0, PREVIEW_NOTIFICACION)}…`
-          : contenido;
+      const preview = contenido.length > PREVIEW_NOTIFICACION ? `${contenido.slice(0, PREVIEW_NOTIFICACION)}…` : contenido;
       // El vendedor ve la notificación dentro de su finca; el comprador no tiene finca
       const idfinca = destino === hilo.idvendedor ? hilo.idfinca : null;
 
@@ -329,18 +380,10 @@ export class MensajeriaService {
           WHERE NOT EXISTS (SELECT 1 FROM notificacion
                              WHERE tipo = 'MENSAJE_MERCADO' AND idregistro = $2::int
                                AND idusuariodestino = $3::int AND leida = false)`,
-        [
-          `${nombre} sobre «${hilo.titulo}»: ${preview}`,
-          hilo.idhilo,
-          destino,
-          'Nuevo mensaje',
-          idfinca,
-        ],
+        [`${nombre} sobre «${hilo.titulo}»: ${preview}`, hilo.idhilo, destino, 'Nuevo mensaje', idfinca],
       );
     } catch (err) {
-      this.logger.warn(
-        `No se pudo crear la notificación del mensaje: ${(err as Error).message}`,
-      );
+      this.logger.warn(`No se pudo crear la notificación del mensaje: ${(err as Error).message}`);
     }
   }
 
@@ -350,7 +393,10 @@ export class MensajeriaService {
       idmensaje: Number(r.idmensaje),
       idremitente: r.idremitente,
       mio: r.idremitente === yo,
+      tipo: r.tipo ?? 'TEXTO',
       contenido: r.contenido,
+      adjuntoUrl: r.adjunto_url ?? null,
+      duracionSeg: r.duracion_seg ?? null,
       createdAt: r.created_at,
       leidoAt: r.leido_at,
     };

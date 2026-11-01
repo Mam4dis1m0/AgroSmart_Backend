@@ -1,14 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import {
-  IsInt,
-  IsNotEmpty,
-  IsOptional,
-  IsPositive,
-  IsString,
-  Max,
-  MaxLength,
-  Min,
-} from 'class-validator';
+import { IsIn, IsInt, IsNotEmpty, IsOptional, IsPositive, IsString, Max, MaxLength, Min } from 'class-validator';
 
 /** Abrir (o recuperar) la conversación con el vendedor de una oferta. */
 export class CrearHiloDto {
@@ -20,10 +11,24 @@ export class CrearHiloDto {
 
 export class EnviarMensajeDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  @IsString()
-  @IsNotEmpty({ message: 'El mensaje no puede estar vacío' })
-  @MaxLength(2000)
+  @IsString() @IsNotEmpty({ message: 'El mensaje no puede estar vacío' }) @MaxLength(2000)
   contenido: string;
+}
+
+/**
+ * Foto o audio dentro de un hilo. Viaja como multipart/form-data:
+ *   archivo (el binario) + tipo + duracionSeg (solo audio) + contenido (pie de foto, opcional).
+ */
+export class EnviarAdjuntoDto {
+  @IsIn(['IMAGEN', 'AUDIO'], { message: 'tipo debe ser IMAGEN o AUDIO' })
+  tipo: 'IMAGEN' | 'AUDIO';
+
+  @Type(() => Number) @IsInt() @Min(1) @Max(300) @IsOptional()
+  duracionSeg?: number;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString() @MaxLength(500) @IsOptional()
+  contenido?: string;
 }
 
 /**

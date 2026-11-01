@@ -22,6 +22,7 @@ import { EmpleadoCosechaModule } from './Modules/empleado-cosecha/empleado-cosec
 import { NotificacionesModule } from './Modules/notificaciones/notificaciones.module';
 import { AuditoriaModule } from './Modules/auditoria/auditoria.module';
 import { ChatModule } from './Modules/Chat/chat.module';
+import { VozModule } from './Modules/Voz/voz.module';
 import { MailModule } from './mail/mail.module';
 
 // ── Multi-tenant, planes SaaS y capa de negocio (documento, sección 1.5) ──────
@@ -55,6 +56,7 @@ import { ReportesModule } from './Modules/reportes/reportes.module';
     NotificacionesModule,
     AuditoriaModule,
     ChatModule,
+    VozModule,
     MailModule,
     FincasModule,
     SuscripcionesModule,

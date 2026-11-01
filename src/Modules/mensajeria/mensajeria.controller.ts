@@ -7,16 +7,15 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser, Roles, SinFinca } from '../../auth/auth.decorators';
 import { AuthUser } from '../../auth/tenant-context';
-import {
-  CrearHiloDto,
-  EnviarMensajeDto,
-  ListarMensajesQueryDto,
-} from '../../dto/mensajeria.dto';
+import { CrearHiloDto, EnviarAdjuntoDto, EnviarMensajeDto, ListarMensajesQueryDto } from '../../dto/mensajeria.dto';
 import { MensajeriaService } from './mensajeria.service';
 
 /**
@@ -51,10 +50,7 @@ export class MensajeriaController {
   }
 
   @Get('hilos/:id')
-  detalleHilo(
-    @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() user: AuthUser,
-  ) {
+  detalleHilo(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
     return this.service.detalleHilo(id, user);
   }
 
@@ -76,12 +72,21 @@ export class MensajeriaController {
     return this.service.enviar(id, dto, user);
   }
 
-  /** Marca como leídos los mensajes que recibí en este hilo. */
-  @Patch('hilos/:id/leidos')
-  marcarLeidos(
+  /** Foto o audio (multipart: campo "archivo"). Máximo 8 MB; el servicio aplica límites por tipo. */
+  @Post('hilos/:id/adjuntos')
+  @UseInterceptors(FileInterceptor('archivo', { limits: { fileSize: 8 * 1024 * 1024, files: 1 } }))
+  enviarAdjunto(
     @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() archivo: Express.Multer.File,
+    @Body() dto: EnviarAdjuntoDto,
     @CurrentUser() user: AuthUser,
   ) {
+    return this.service.enviarAdjunto(id, archivo, dto, user);
+  }
+
+  /** Marca como leídos los mensajes que recibí en este hilo. */
+  @Patch('hilos/:id/leidos')
+  marcarLeidos(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
     return this.service.marcarLeidos(id, user);
   }
 }
