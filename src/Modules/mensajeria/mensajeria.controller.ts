@@ -15,7 +15,13 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser, Roles, SinFinca } from '../../auth/auth.decorators';
 import { AuthUser } from '../../auth/tenant-context';
-import { CrearHiloDto, EnviarAdjuntoDto, EnviarMensajeDto, ListarMensajesQueryDto } from '../../dto/mensajeria.dto';
+import {
+  CrearHiloDto,
+  EnviarAdjuntoDto,
+  EnviarMensajeDto,
+  ListarMensajesQueryDto,
+  SincronizarMensajesDto,
+} from '../../dto/mensajeria.dto';
 import { MensajeriaService } from './mensajeria.service';
 
 /**
@@ -49,8 +55,29 @@ export class MensajeriaController {
     return this.service.noLeidosTotal(user);
   }
 
+  /**
+   * Al volver la conexión, la app sube los mensajes que se escribieron sin internet
+   * (enviados por SMS o en cola). Idempotente por idcliente: se puede reintentar.
+   */
+  @Post('sincronizar')
+  sincronizar(
+    @Body() dto: SincronizarMensajesDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.service.sincronizar(dto, user);
+  }
+
+  /** Número de AgroSmart al que se escribe por SMS sin internet (formato "#idhilo texto"). */
+  @Get('sms/info')
+  smsInfo() {
+    return this.service.infoSms();
+  }
+
   @Get('hilos/:id')
-  detalleHilo(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+  detalleHilo(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+  ) {
     return this.service.detalleHilo(id, user);
   }
 
@@ -74,7 +101,11 @@ export class MensajeriaController {
 
   /** Foto o audio (multipart: campo "archivo"). Máximo 8 MB; el servicio aplica límites por tipo. */
   @Post('hilos/:id/adjuntos')
-  @UseInterceptors(FileInterceptor('archivo', { limits: { fileSize: 8 * 1024 * 1024, files: 1 } }))
+  @UseInterceptors(
+    FileInterceptor('archivo', {
+      limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+    }),
+  )
   enviarAdjunto(
     @Param('id', ParseIntPipe) id: number,
     @UploadedFile() archivo: Express.Multer.File,
@@ -86,7 +117,10 @@ export class MensajeriaController {
 
   /** Marca como leídos los mensajes que recibí en este hilo. */
   @Patch('hilos/:id/leidos')
-  marcarLeidos(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser) {
+  marcarLeidos(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+  ) {
     return this.service.marcarLeidos(id, user);
   }
 }

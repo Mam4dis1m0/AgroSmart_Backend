@@ -97,6 +97,11 @@ export class MensajeriaGateway
     this.server?.to(sala(idusuario)).emit(evento, payload);
   }
 
+  /** ¿Tiene el usuario al menos un dispositivo conectado ahora mismo? */
+  estaConectado(idusuario: number): boolean {
+    return (this.server?.adapter?.rooms?.get(sala(idusuario))?.size ?? 0) > 0;
+  }
+
   private extraerToken(client: Socket): string {
     // Solo handshake.auth o cabecera Authorization; nunca por query-string (queda en los logs)
     const crudo =
