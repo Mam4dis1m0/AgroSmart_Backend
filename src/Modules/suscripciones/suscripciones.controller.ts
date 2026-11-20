@@ -17,7 +17,7 @@ export class ContratarPlanDto {
   /** NEQUI (transferencia revisada a mano) o SIMULADO (solo desarrollo). */
   @IsOptional() @IsIn(['NEQUI', 'SIMULADO']) metodo?: string;
   /** Referencia que aparece en el comprobante de Nequi. */
-  @IsOptional() @IsString() @MaxLength(40) referencia?: string;
+  @IsOptional() @IsString() @MaxLength(80) referencia?: string;
   /** Foto del comprobante como data URL (data:image/...;base64,...). */
   @IsOptional() @IsString() comprobante?: string;
 }

@@ -315,10 +315,15 @@ export class SuscripcionesService {
         'El pago por Nequi no está configurado en este servidor',
       );
     }
-    const referencia = (opts.referencia ?? '').trim().toUpperCase();
-    if (!/^[A-Z0-9-]{4,40}$/.test(referencia)) {
+    // Se aceptan espacios, puntos, '#', etc. al copiar la referencia: solo se
+    // guardan letras y números (ej. "M 1234.5678" -> "M12345678").
+    const referencia = (opts.referencia ?? '')
+      .normalize('NFKD')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '');
+    if (referencia.length < 4 || referencia.length > 40) {
       throw new BadRequestException(
-        'Escribe la referencia que aparece en el comprobante de Nequi',
+        'Escribe la referencia que aparece en el comprobante de Nequi (mínimo 4 letras o números)',
       );
     }
 
@@ -345,23 +350,39 @@ export class SuscripcionesService {
     }
 
     let comprobanteurl: string | null = null;
-    if (opts.comprobante) {
-      if (!opts.comprobante.startsWith('data:image/')) {
-        throw new BadRequestException('El comprobante debe ser una imagen');
-      }
-      if (opts.comprobante.length > 7_000_000) {
+    const comprobante = (opts.comprobante ?? '').trim();
+    if (comprobante) {
+      const m = /^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$/i.exec(
+        comprobante,
+      );
+      if (!m) {
         throw new BadRequestException(
-          'La imagen supera el tamaño máximo (5 MB)',
+          'El comprobante debe ser una foto (JPG, PNG o similar)',
         );
       }
-      const r = await cloudinary.uploader.upload(opts.comprobante, {
-        folder:
-          idfinca != null
-            ? `agrosmart/pagos/finca_${idfinca}`
-            : `agrosmart/pagos/comprador_${user.idusuario}`,
-        transformation: [{ width: 1400, crop: 'limit' }],
-      });
-      comprobanteurl = r.secure_url;
+      // Tamaño real del archivo (base64 ocupa ~4/3 del original).
+      const bytes = Math.floor((m[2].replace(/\s/g, '').length * 3) / 4);
+      if (bytes > 5 * 1024 * 1024) {
+        throw new BadRequestException(
+          'La foto supera el tamaño máximo (5 MB). Toma una captura de pantalla o redúcela.',
+        );
+      }
+      try {
+        const r = await cloudinary.uploader.upload(comprobante, {
+          folder:
+            idfinca != null
+              ? `agrosmart/pagos/finca_${idfinca}`
+              : `agrosmart/pagos/comprador_${user.idusuario}`,
+          resource_type: 'image',
+          transformation: [{ width: 1400, crop: 'limit' }],
+        });
+        comprobanteurl = r.secure_url;
+      } catch (e) {
+        console.error('Error subiendo comprobante a Cloudinary:', e);
+        throw new ServiceUnavailableException(
+          'No pudimos subir la foto del comprobante. Intenta de nuevo o envía el pago solo con la referencia.',
+        );
+      }
     }
 
     const [pago] = await this.ds.query(
