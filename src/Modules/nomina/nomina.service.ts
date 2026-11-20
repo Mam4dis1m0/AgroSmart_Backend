@@ -22,7 +22,7 @@ import {
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { filas } from '../../common/sql';
-import { brutoDePago, unidadesDePago } from './pago-periodo';
+import { brutoDePago, repartirPorTarea, unidadesDePago } from './pago-periodo';
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -51,11 +51,15 @@ export class NominaService {
           WHERE a.idfinca = $1 AND x.t IS NOT NULL
             AND ((x.t - interval '5 hours')::date) BETWEEN $2::date AND $3::date
        )
-       SELECT e.idusuario AS idempleado, e.tipopago, e.valorpago::float8 AS valorpago,
-              (SELECT count(DISTINCT d.dia) FROM dias d WHERE d.idempleado = e.idusuario)::int AS diastrabajados
-         FROM empleado e
-         JOIN finca_usuario fu ON fu.idusuario = e.idusuario AND fu.idfinca = $1 AND fu.rol = 'empleado' AND fu.activo = true
-        WHERE e.valorpago > 0`,
+       SELECT * FROM (
+         SELECT e.idusuario AS idempleado, e.tipopago, e.valorpago::float8 AS valorpago, fu.activo,
+                (SELECT count(DISTINCT d.dia) FROM dias d WHERE d.idempleado = e.idusuario)::int AS diastrabajados
+           FROM empleado e
+           JOIN finca_usuario fu ON fu.idusuario = e.idusuario AND fu.idfinca = $1 AND fu.rol = 'empleado'
+          WHERE e.valorpago > 0
+       ) x
+       -- Un empleado retirado durante el período cobra los días que sí trabajó
+       WHERE x.activo = true OR (x.tipopago = 'dia' AND x.diastrabajados > 0)`,
       [idfinca, inicio, fin],
     );
   }
@@ -158,7 +162,73 @@ export class NominaService {
         WHERE d.idnomina = $1 ORDER BY u.primernombre`,
       [idnomina],
     );
-    return { ...nomina, detalles };
+    const tareas = await this.tareasDelPeriodo(
+      idfinca,
+      filas<{ idempleado: number }>(detalles).map((d) => d.idempleado),
+      idnomina,
+    );
+    return {
+      ...nomina,
+      detalles: filas<Record<string, any>>(detalles).map((d) => {
+        const propias = tareas.filter(
+          (t) => t.idempleado === Number(d.idempleado),
+        );
+        const { pagos, sinTarea } = repartirPorTarea(Number(d.bruto), propias);
+        return {
+          ...d,
+          tareas: propias.map((t, i) => ({ ...t, pago: pagos[i] })),
+          pagosintarea: sinTarea,
+        };
+      }),
+    };
+  }
+
+  /**
+   * Tareas que cada empleado inició o completó dentro del período, con los días que aportan a la
+   * nómina, horas registradas, pago acordado y lo que cosechó en ellas.
+   */
+  private async tareasDelPeriodo(
+    idfinca: number,
+    empleados: number[],
+    idnomina: number,
+  ) {
+    if (!empleados.length) return [];
+    const rows = filas<Record<string, any>>(
+      await this.ds.query(
+        `SELECT a.idasigtarea, a.idempleado, t.idtarea, t.tipoactividad, t.etapa,
+                c.tipo AS cultivo, c.nombrelote AS lote, a.estado,
+                a.fechainicio, a.fechafin,
+                COALESCE(a.horastrabajadas, 0)::float8 AS horas,
+                a.pagoacordado::float8 AS pagoacordado,
+                ARRAY(
+                  SELECT DISTINCT ((x.t - interval '5 hours')::date)::text
+                    FROM (VALUES (a.fechainicio), (a.fechafin)) AS x(t)
+                   WHERE x.t IS NOT NULL
+                     AND ((x.t - interval '5 hours')::date) BETWEEN n.fechainicio AND n.fechafin
+                   ORDER BY 1
+                ) AS dias,
+                COALESCE((
+                  SELECT json_agg(json_build_object('cantidad', co.cantidad::float8, 'unidad', co.unidad,
+                                                    'fecha', co.fechacosecha) ORDER BY co.fechacosecha)
+                    FROM cosecha co
+                   WHERE co.idtarea = t.idtarea AND co.idempleado = a.idempleado AND co.idfinca = $1
+                ), '[]'::json) AS cosechas
+           FROM asignacion_tarea a
+           JOIN nomina n ON n.idnomina = $3
+           JOIN tarea t ON t.idtarea = a.idtarea
+           LEFT JOIN cultivo c ON c.idcultivo = t.idcultivo
+          WHERE a.idfinca = $1 AND a.idempleado = ANY($2::int[])
+          ORDER BY a.fechainicio NULLS LAST, a.idasigtarea`,
+        [idfinca, empleados, idnomina],
+      ),
+    );
+    return rows
+      .map((r) => ({
+        ...r,
+        idempleado: Number(r.idempleado),
+        dias: (r.dias ?? []) as string[],
+      }))
+      .filter((r) => r.dias.length > 0);
   }
 
   async ajustarDeducciones(

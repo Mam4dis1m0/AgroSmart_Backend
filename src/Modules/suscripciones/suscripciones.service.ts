@@ -6,22 +6,31 @@
 //              conservando todos sus datos (RNF-19).
 
 import {
+  BadRequestException,
   ConflictException,
-  HttpException,
-  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
   ServiceUnavailableException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { PlanService } from '../../auth/plan.service';
 import { AuthUser } from '../../auth/tenant-context';
 import { filas } from '../../common/sql';
+import { v2 as cloudinary } from 'cloudinary';
 import { PasarelaPagoService } from './pasarela-pago.service';
 
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
 const MESES_POR_CICLO = 1;
+/** Días antes del vencimiento en que ya se puede pagar el siguiente mes. */
+const DIAS_RENOVACION = 7;
 
 @Injectable()
 export class SuscripcionesService {
@@ -72,8 +81,50 @@ export class SuscripcionesService {
     );
   }
 
-  // ── CU-42 · Contratar Premium ─────────────────────────────────────────────
-  async contratar(idfinca: number, user: AuthUser) {
+  /** Métodos de pago disponibles en este servidor (para que la app muestre los correctos). */
+  // ── Pago por transferencia Nequi (manual) ─────────────────────────────────
+  //
+  // 1. La app muestra el número Nequi de AgroSmart (NEQUI_NUMERO / NEQUI_TITULAR).
+  // 2. El administrador de la finca transfiere y envía la referencia + foto del comprobante.
+  // 3. Un revisor (correo en PAGOS_REVISORES) lo compara con su app Nequi y lo aprueba
+  //    o rechaza. Al aprobarlo se activa (o se suma) un mes de Premium.
+
+  private cuentaNequi() {
+    const numero = (process.env.NEQUI_NUMERO ?? '').replace(/\D/g, '');
+    return numero
+      ? { numero, titular: process.env.NEQUI_TITULAR ?? 'AgroSmart' }
+      : null;
+  }
+
+  esRevisor(user: AuthUser) {
+    const lista = (process.env.PAGOS_REVISORES ?? '')
+      .split(',')
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+    return lista.includes((user.email ?? '').toLowerCase());
+  }
+
+  private exigirRevisor(user: AuthUser) {
+    if (!this.esRevisor(user)) {
+      throw new ForbiddenException('No tienes permiso para revisar pagos');
+    }
+  }
+
+  /** Lo que la app necesita para mostrar las opciones de pago. */
+  metodosPago(user: AuthUser) {
+    return {
+      nequi: this.cuentaNequi(),
+      simulado: this.pasarela.simuladoPermitido(),
+      revisor: this.esRevisor(user),
+    };
+  }
+
+  // ── CU-42 · Contratar / renovar Premium ───────────────────────────────────
+  async contratar(
+    idfinca: number,
+    user: AuthUser,
+    opts: { metodo?: string; referencia?: string; comprobante?: string } = {},
+  ) {
     this.exigirOnline();
 
     const [premium] = await this.ds.query(
@@ -82,67 +133,230 @@ export class SuscripcionesService {
     if (!premium)
       throw new NotFoundException('El plan Premium no está disponible');
 
+    // Ya es Premium: solo se paga el mes siguiente cuando faltan pocos días.
     const actual = await this.planes.getPlan(idfinca);
     if (actual.codigo === 'PREMIUM') {
-      throw new ConflictException('Tu finca ya tiene el plan Premium activo');
+      const [lejos] = await this.ds.query(
+        `SELECT 1 FROM suscripcion
+          WHERE idfinca = $1 AND estado = 'ACTIVA'
+            AND (fechafin IS NULL OR fechafin > now() + make_interval(days => $2::int))`,
+        [idfinca, DIAS_RENOVACION],
+      );
+      if (lejos) {
+        throw new ConflictException(
+          `Tu finca ya tiene Premium activo. Podrás renovarlo ${DIAS_RENOVACION} días antes de que venza.`,
+        );
+      }
     }
 
+    const metodo = (opts.metodo ?? 'SIMULADO').toUpperCase();
+    if (metodo === 'NEQUI') {
+      return this.registrarTransferencia(idfinca, user, premium, opts);
+    }
+    if (metodo !== 'SIMULADO') {
+      throw new BadRequestException('Método de pago no soportado');
+    }
+
+    // ── Simulado (desarrollo / demostración; bloqueado en producción) ──
     const cobro = await this.pasarela.cobrar(
       premium.precio,
       premium.moneda,
       `Suscripción Premium finca ${idfinca}`,
-      {
-        idfinca,
-        idusuario: user.idusuario,
-      },
+      { idfinca, idusuario: user.idusuario },
     );
+    const idpago = await this.ds.transaction(async (m) => {
+      const [pago] = await m.query(
+        `INSERT INTO pago (idfinca, idusuario, tipo, monto, moneda, estado, proveedor, referenciaexterna)
+         VALUES ($1, $2, 'SUSCRIPCION', $3, $4, 'APROBADO', $5, $6) RETURNING idpago`,
+        [
+          idfinca,
+          user.idusuario,
+          premium.precio,
+          premium.moneda,
+          cobro.proveedor,
+          cobro.referencia,
+        ],
+      );
+      await this.activarPremium(m, idfinca, premium.idplan, pago.idpago, true);
+      return pago.idpago as number;
+    });
+    this.planes.invalidar(idfinca);
+    return {
+      pago: { idpago, estado: 'APROBADO' },
+      mensaje: '¡Premium activado!',
+    };
+  }
+
+  private async registrarTransferencia(
+    idfinca: number,
+    user: AuthUser,
+    premium: { idplan: number; precio: number; moneda: string },
+    opts: { referencia?: string; comprobante?: string },
+  ) {
+    if (!this.cuentaNequi()) {
+      throw new ServiceUnavailableException(
+        'El pago por Nequi no está configurado en este servidor',
+      );
+    }
+    const referencia = (opts.referencia ?? '').trim().toUpperCase();
+    if (!/^[A-Z0-9-]{4,40}$/.test(referencia)) {
+      throw new BadRequestException(
+        'Escribe la referencia que aparece en el comprobante de Nequi',
+      );
+    }
+
+    // Una referencia solo puede usarse una vez (evita reutilizar un comprobante).
+    const [usada] = await this.ds.query(
+      `SELECT 1 FROM pago WHERE proveedor = 'NEQUI' AND referenciaexterna = $1 AND estado <> 'FALLIDO'`,
+      [referencia],
+    );
+    if (usada) {
+      throw new ConflictException('Esa referencia ya fue registrada');
+    }
+    const [pendiente] = await this.ds.query(
+      `SELECT 1 FROM pago WHERE idfinca = $1 AND proveedor = 'NEQUI' AND estado = 'PENDIENTE'`,
+      [idfinca],
+    );
+    if (pendiente) {
+      throw new ConflictException(
+        'Ya tienes un pago en revisión. Te avisaremos cuando lo confirmemos.',
+      );
+    }
+
+    let comprobanteurl: string | null = null;
+    if (opts.comprobante) {
+      if (!opts.comprobante.startsWith('data:image/')) {
+        throw new BadRequestException('El comprobante debe ser una imagen');
+      }
+      if (opts.comprobante.length > 7_000_000) {
+        throw new BadRequestException(
+          'La imagen supera el tamaño máximo (5 MB)',
+        );
+      }
+      const r = await cloudinary.uploader.upload(opts.comprobante, {
+        folder: `agrosmart/pagos/finca_${idfinca}`,
+        transformation: [{ width: 1400, crop: 'limit' }],
+      });
+      comprobanteurl = r.secure_url;
+    }
 
     const [pago] = await this.ds.query(
-      `INSERT INTO pago (idfinca, idusuario, tipo, monto, moneda, estado, proveedor, referenciaexterna)
-       VALUES ($1, $2, 'SUSCRIPCION', $3, $4, $5, $6, $7) RETURNING idpago`,
+      `INSERT INTO pago (idfinca, idusuario, tipo, monto, moneda, estado, proveedor, referenciaexterna, detalle)
+       VALUES ($1, $2, 'SUSCRIPCION', $3, $4, 'PENDIENTE', 'NEQUI', $5, $6) RETURNING idpago`,
       [
         idfinca,
         user.idusuario,
         premium.precio,
         premium.moneda,
-        cobro.aprobado ? 'APROBADO' : 'FALLIDO',
-        cobro.proveedor,
-        cobro.referencia,
+        referencia,
+        JSON.stringify({ idplan: premium.idplan, comprobanteurl }),
       ],
     );
+    return {
+      pago: { idpago: pago.idpago, estado: 'PENDIENTE' },
+      mensaje:
+        'Recibimos tu comprobante. Activaremos Premium en cuanto confirmemos la transferencia.',
+    };
+  }
 
-    // Pago fallido → la finca conserva su plan actual
-    if (!cobro.aprobado) {
-      throw new HttpException(
-        {
-          statusCode: 402,
-          message:
-            cobro.motivo ??
-            'El pago fue rechazado. Se mantiene tu plan actual.',
-        },
-        HttpStatus.PAYMENT_REQUIRED,
+  /** Pagos Nequi esperando revisión (solo revisores). */
+  pagosPorRevisar(user: AuthUser) {
+    this.exigirOnline();
+    this.exigirRevisor(user);
+    return this.ds.query(
+      `SELECT p.idpago, p.monto::float8 AS monto, p.moneda, p.referenciaexterna AS referencia,
+              p.detalle->>'comprobanteurl' AS comprobanteurl, p.created_at,
+              f.nombre AS finca, TRIM(COALESCE(u.primernombre, '') || ' ' || COALESCE(u.primerapellido, '')) AS usuario, u.email
+         FROM pago p
+         LEFT JOIN finca f ON f.idfinca = p.idfinca
+         LEFT JOIN usuario u ON u.idusuario = p.idusuario
+        WHERE p.proveedor = 'NEQUI' AND p.estado = 'PENDIENTE'
+        ORDER BY p.created_at`,
+    );
+  }
+
+  /** El revisor confirma (o rechaza) la transferencia. Idempotente. */
+  async revisarPago(user: AuthUser, idpago: number, aprobar: boolean) {
+    this.exigirOnline();
+    this.exigirRevisor(user);
+    const idfinca = await this.ds.transaction(async (m) => {
+      const [p] = await m.query(
+        `SELECT idfinca, detalle, estado FROM pago
+          WHERE idpago = $1 AND proveedor = 'NEQUI' FOR UPDATE`,
+        [idpago],
       );
+      if (!p) throw new NotFoundException('Pago no encontrado');
+      if (p.estado !== 'PENDIENTE') {
+        throw new ConflictException('Este pago ya fue revisado');
+      }
+      await m.query(
+        `UPDATE pago SET estado = $2,
+                detalle = COALESCE(detalle, '{}'::jsonb) || jsonb_build_object('revisadopor', $3::text, 'revisadoen', now())
+          WHERE idpago = $1`,
+        [idpago, aprobar ? 'APROBADO' : 'FALLIDO', user.email],
+      );
+      if (!aprobar) return null;
+      const [premium] = await m.query(
+        `SELECT idplan FROM plan WHERE codigo = 'PREMIUM'`,
+      );
+      const det = (p.detalle ?? {}) as { idplan?: number };
+      // Transferencia manual: no hay débito automático, se renueva pagando cada mes.
+      await this.activarPremium(
+        m,
+        p.idfinca,
+        det.idplan ?? premium.idplan,
+        idpago,
+        false,
+      );
+      return p.idfinca as number;
+    });
+    if (idfinca != null) {
+      this.planes.invalidar(idfinca);
+      this.logger.log(`✅ Finca ${idfinca}: Premium activado (pago ${idpago})`);
     }
+    return { idpago, estado: aprobar ? 'APROBADO' : 'FALLIDO' };
+  }
 
-    await this.ds.transaction(async (m) => {
+  /** Activa Premium, o suma un mes si ya estaba activo, dentro de una transacción. */
+  private async activarPremium(
+    m: EntityManager,
+    idfinca: number,
+    idplan: number,
+    idpago: number,
+    renovacionAutomatica: boolean,
+  ) {
+    const [vigente] = await m.query(
+      `SELECT idsuscripcion FROM suscripcion
+        WHERE idfinca = $1 AND estado = 'ACTIVA' AND idplan = $2`,
+      [idfinca, idplan],
+    );
+    if (vigente) {
+      // Renovación anticipada: el mes pagado se suma a los días que quedaban.
+      await m.query(
+        `UPDATE suscripcion
+            SET fechafin = GREATEST(COALESCE(fechafin, now()), now()) + make_interval(months => $2::int),
+                idpago = $3, renovacionautomatica = $4
+          WHERE idsuscripcion = $1`,
+        [vigente.idsuscripcion, MESES_POR_CICLO, idpago, renovacionAutomatica],
+      );
+    } else {
       await m.query(
         `UPDATE suscripcion SET estado = 'CANCELADA', fechafin = now(), renovacionautomatica = false
           WHERE idfinca = $1 AND estado = 'ACTIVA'`,
         [idfinca],
       );
       await m.query(
-        `INSERT INTO suscripcion (idfinca, idplan, estado, fechafin, idpago)
-         VALUES ($1, $2, 'ACTIVA', now() + make_interval(months => $3::int), $4)`,
-        [idfinca, premium.idplan, MESES_POR_CICLO, pago.idpago],
+        `INSERT INTO suscripcion (idfinca, idplan, estado, fechafin, idpago, renovacionautomatica)
+         VALUES ($1, $2, 'ACTIVA', now() + make_interval(months => $3::int), $4, $5)`,
+        [idfinca, idplan, MESES_POR_CICLO, idpago, renovacionAutomatica],
       );
-      await m.query(
-        `UPDATE finca SET idplan = $2, planvencimiento = now() + make_interval(months => $3::int) WHERE idfinca = $1`,
-        [idfinca, premium.idplan, MESES_POR_CICLO],
-      );
-    });
-    this.planes.invalidar(idfinca);
-
-    return this.miSuscripcion(idfinca);
+    }
+    await m.query(
+      `UPDATE finca SET idplan = $2,
+              planvencimiento = (SELECT fechafin FROM suscripcion WHERE idfinca = $1 AND estado = 'ACTIVA' LIMIT 1)
+        WHERE idfinca = $1`,
+      [idfinca, idplan],
+    );
   }
 
   // ── Cancelar → vuelve a Freemium conservando los datos ────────────────────
