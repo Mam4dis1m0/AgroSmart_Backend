@@ -2,6 +2,7 @@ import {
   brutoDePago,
   diasDelPeriodo,
   mesesDelPeriodo,
+  repartirPorTarea,
   unidadesDePago,
 } from './pago-periodo';
 
@@ -51,5 +52,37 @@ describe('pago por tipo', () => {
   it('las horas que el empleado reporte no intervienen en el pago', () => {
     // La función solo recibe tipo, período, días trabajados y valor
     expect(unidadesDePago('mes', '2026-10-01', '2026-10-31', 0)).toBe(1);
+  });
+});
+
+describe('repartirPorTarea', () => {
+  it('reparte cada día entre las tareas de ese día', () => {
+    const r = repartirPorTarea(300000, [
+      { dias: ['2026-11-02', '2026-11-03'] },
+      { dias: ['2026-11-03'] },
+      { dias: ['2026-11-04'] },
+    ]);
+    // 3 días → 100.000 por día; el 3 se divide entre dos tareas
+    expect(r.pagos).toEqual([150000, 50000, 100000]);
+    expect(r.sinTarea).toBe(0);
+  });
+
+  it('sin tareas todo queda como pago sin tarea (semana / mes)', () => {
+    expect(repartirPorTarea(1200000, [])).toEqual({
+      pagos: [],
+      sinTarea: 1200000,
+    });
+  });
+
+  it('no pierde pesos por redondeo', () => {
+    const r = repartirPorTarea(100000, [
+      { dias: ['a'] },
+      { dias: ['a'] },
+      { dias: ['a'] },
+    ]);
+    expect(r.pagos.reduce((s, p) => s + p, 0) + r.sinTarea).toBeCloseTo(
+      100000,
+      2,
+    );
   });
 });

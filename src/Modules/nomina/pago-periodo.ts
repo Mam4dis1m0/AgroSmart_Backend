@@ -51,3 +51,27 @@ export const ETIQUETA_UNIDAD: Record<string, string> = {
   semana: 'semanas',
   mes: 'meses',
 };
+
+/**
+ * Reparte el pago bruto de un empleado entre las tareas que hizo en el período.
+ * Cada día trabajado vale bruto ÷ días trabajados, y lo de cada día se divide por partes iguales
+ * entre las tareas que inició o completó ese día. Lo que no cae en ninguna tarea (p. ej. un pago
+ * semanal o mensual sin tareas registradas) queda en `sinTarea`.
+ */
+export function repartirPorTarea(
+  bruto: number,
+  tareas: { dias: string[] }[],
+): { pagos: number[]; sinTarea: number } {
+  const porDia = new Map<string, number>();
+  for (const t of tareas)
+    for (const d of new Set(t.dias)) porDia.set(d, (porDia.get(d) ?? 0) + 1);
+  if (porDia.size === 0 || bruto <= 0) {
+    return { pagos: tareas.map(() => 0), sinTarea: r2(Math.max(bruto, 0)) };
+  }
+  const valorDia = bruto / porDia.size;
+  const pagos = tareas.map((t) =>
+    r2([...new Set(t.dias)].reduce((s, d) => s + valorDia / porDia.get(d)!, 0)),
+  );
+  const asignado = pagos.reduce((s, p) => s + p, 0);
+  return { pagos, sinTarea: r2(bruto - asignado) };
+}

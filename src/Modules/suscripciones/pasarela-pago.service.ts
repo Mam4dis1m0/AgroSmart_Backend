@@ -27,14 +27,21 @@ export interface ResultadoCobro {
 export class PasarelaPagoService {
   private readonly logger = new Logger(PasarelaPagoService.name);
 
+  /** ¿Se permite aprobar pagos simulados en este entorno? */
+  simuladoPermitido(): boolean {
+    return (
+      process.env.NODE_ENV !== 'production' ||
+      process.env.PAGOS_SIMULADOS === 'true'
+    );
+  }
+
   async cobrar(
     monto: number,
     moneda: string,
     concepto: string,
     _meta: Record<string, unknown> = {},
   ): Promise<ResultadoCobro> {
-    const esProduccion = process.env.NODE_ENV === 'production';
-    if (esProduccion && process.env.PAGOS_SIMULADOS !== 'true') {
+    if (!this.simuladoPermitido()) {
       throw new ServiceUnavailableException(
         'La pasarela de pagos aún no está configurada en este entorno',
       );

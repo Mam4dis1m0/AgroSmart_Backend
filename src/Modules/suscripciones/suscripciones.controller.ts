@@ -1,8 +1,26 @@
-import { Controller, Get, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Post,
+  ValidationPipe,
+} from '@nestjs/common';
+import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { Roles, SinFinca } from '../../auth/auth.decorators';
 import { CurrentUser } from '../../auth/auth.decorators';
 import { AuthUser, TenantContext } from '../../auth/tenant-context';
 import { SuscripcionesService } from './suscripciones.service';
+
+export class ContratarPlanDto {
+  /** NEQUI (transferencia revisada a mano) o SIMULADO (solo desarrollo). */
+  @IsOptional() @IsIn(['NEQUI', 'SIMULADO']) metodo?: string;
+  /** Referencia que aparece en el comprobante de Nequi. */
+  @IsOptional() @IsString() @MaxLength(40) referencia?: string;
+  /** Foto del comprobante como data URL (data:image/...;base64,...). */
+  @IsOptional() @IsString() comprobante?: string;
+}
 
 @Controller('api/v1')
 export class SuscripcionesController {
@@ -23,10 +41,20 @@ export class SuscripcionesController {
     return this.service.miSuscripcion(TenantContext.requireFinca());
   }
 
+  @Get('suscripcion/metodos-pago')
+  @Roles('admin', 'empleado', 'comprador')
+  @SinFinca()
+  metodosPago(@CurrentUser() user: AuthUser) {
+    return this.service.metodosPago(user);
+  }
+
   @Post('suscripcion/contratar')
   @Roles('admin')
-  contratar(@CurrentUser() user: AuthUser) {
-    return this.service.contratar(TenantContext.requireFinca(), user);
+  contratar(
+    @CurrentUser() user: AuthUser,
+    @Body(new ValidationPipe({ whitelist: true })) body: ContratarPlanDto,
+  ) {
+    return this.service.contratar(TenantContext.requireFinca(), user, body);
   }
 
   @Post('suscripcion/cancelar')
@@ -39,5 +67,33 @@ export class SuscripcionesController {
   @Roles('admin')
   pagos() {
     return this.service.pagos(TenantContext.requireFinca());
+  }
+
+  // ── Revisión de transferencias (solo correos en PAGOS_REVISORES) ──
+  @Get('pagos/por-revisar')
+  @Roles('admin', 'empleado', 'comprador')
+  @SinFinca()
+  porRevisar(@CurrentUser() user: AuthUser) {
+    return this.service.pagosPorRevisar(user);
+  }
+
+  @Post('pagos/:idpago/aprobar')
+  @Roles('admin', 'empleado', 'comprador')
+  @SinFinca()
+  aprobar(
+    @CurrentUser() user: AuthUser,
+    @Param('idpago', ParseIntPipe) idpago: number,
+  ) {
+    return this.service.revisarPago(user, idpago, true);
+  }
+
+  @Post('pagos/:idpago/rechazar')
+  @Roles('admin', 'empleado', 'comprador')
+  @SinFinca()
+  rechazar(
+    @CurrentUser() user: AuthUser,
+    @Param('idpago', ParseIntPipe) idpago: number,
+  ) {
+    return this.service.revisarPago(user, idpago, false);
   }
 }
