@@ -31,6 +31,9 @@ cloudinary.config({
 const MESES_POR_CICLO = 1;
 /** Días antes del vencimiento en que ya se puede pagar el siguiente mes. */
 const DIAS_RENOVACION = 7;
+/** Plan Premium de los compradores y tipo de sus pagos. */
+const PLAN_COMPRADOR = 'COMPRADOR_PREMIUM';
+const TIPO_PAGO_COMPRADOR = 'SUSCRIPCION_COMPRADOR';
 
 @Injectable()
 export class SuscripcionesService {
@@ -50,12 +53,121 @@ export class SuscripcionesService {
     }
   }
 
-  listarPlanes() {
+  /** Planes de fincas (admin/empleado) o de compradores, según quién pregunta. */
+  listarPlanes(user?: AuthUser) {
     this.exigirOnline();
     return this.ds.query(
       `SELECT idplan, codigo, nombre, descripcion, preciomensual::float8 AS preciomensual, moneda,
               maxcultivos, maxempleados, maxfincas, comisionmarketplace::float8 AS comisionmarketplace, funciones
-         FROM plan WHERE activo = true ORDER BY preciomensual`,
+         FROM plan WHERE activo = true AND COALESCE(audiencia, 'finca') = $1
+        ORDER BY preciomensual`,
+      [user?.rol === 'comprador' ? 'comprador' : 'finca'],
+    );
+  }
+
+  // ── Premium del comprador (suscripción por usuario, no por finca) ─────────
+  //   Beneficios: ve las ofertas nuevas de inmediato (sin la espera de las ofertas
+  //   Freemium), recibe la alerta "oferta cerca" apenas se publica y aparece como
+  //   "Comprador Premium" ante los vendedores.
+
+  async miSuscripcionComprador(idusuario: number) {
+    this.exigirOnline();
+    const [cp] = await this.ds.query(
+      `SELECT premiumhasta FROM comprador_perfil WHERE idusuario = $1`,
+      [idusuario],
+    );
+    const hasta = (cp?.premiumhasta as Date | null) ?? null;
+    const activo = hasta != null && new Date(hasta).getTime() > Date.now();
+    return {
+      plan: activo ? PLAN_COMPRADOR : 'GRATIS',
+      premium: activo,
+      premiumhasta: activo ? hasta : null,
+    };
+  }
+
+  pagosComprador(idusuario: number) {
+    this.exigirOnline();
+    return this.ds.query(
+      `SELECT idpago, tipo, monto::float8 AS monto, moneda, estado, proveedor, referenciaexterna, created_at
+         FROM pago WHERE idusuario = $1 AND tipo = $2 ORDER BY created_at DESC LIMIT 100`,
+      [idusuario, TIPO_PAGO_COMPRADOR],
+    );
+  }
+
+  async contratarComprador(
+    user: AuthUser,
+    opts: { metodo?: string; referencia?: string; comprobante?: string } = {},
+  ) {
+    this.exigirOnline();
+    const [plan] = await this.ds.query(
+      `SELECT idplan, preciomensual::float8 AS precio, moneda FROM plan WHERE codigo = $1 AND activo = true`,
+      [PLAN_COMPRADOR],
+    );
+    if (!plan)
+      throw new NotFoundException(
+        'El plan Premium para compradores no está disponible',
+      );
+
+    const [lejos] = await this.ds.query(
+      `SELECT 1 FROM comprador_perfil
+        WHERE idusuario = $1 AND premiumhasta > now() + make_interval(days => $2::int)`,
+      [user.idusuario, DIAS_RENOVACION],
+    );
+    if (lejos) {
+      throw new ConflictException(
+        `Ya tienes Premium activo. Podrás renovarlo ${DIAS_RENOVACION} días antes de que venza.`,
+      );
+    }
+
+    const metodo = (opts.metodo ?? 'SIMULADO').toUpperCase();
+    if (metodo === 'NEQUI') {
+      return this.registrarTransferencia(
+        { idfinca: null, tipo: TIPO_PAGO_COMPRADOR },
+        user,
+        plan,
+        opts,
+      );
+    }
+    if (metodo !== 'SIMULADO') {
+      throw new BadRequestException('Método de pago no soportado');
+    }
+    const cobro = await this.pasarela.cobrar(
+      plan.precio,
+      plan.moneda,
+      `Premium comprador ${user.idusuario}`,
+    );
+    const idpago = await this.ds.transaction(async (m) => {
+      const [pago] = await m.query(
+        `INSERT INTO pago (idfinca, idusuario, tipo, monto, moneda, estado, proveedor, referenciaexterna)
+         VALUES (NULL, $1, $2, $3, $4, 'APROBADO', $5, $6) RETURNING idpago`,
+        [
+          user.idusuario,
+          TIPO_PAGO_COMPRADOR,
+          plan.precio,
+          plan.moneda,
+          cobro.proveedor,
+          cobro.referencia,
+        ],
+      );
+      await this.activarComprador(m, user.idusuario);
+      return pago.idpago as number;
+    });
+    return {
+      pago: { idpago, estado: 'APROBADO' },
+      mensaje: '¡Premium activado!',
+    };
+  }
+
+  /** Suma un mes de Premium al comprador (desde hoy o desde su vencimiento). */
+  private async activarComprador(m: EntityManager, idusuario: number) {
+    await m.query(
+      `INSERT INTO comprador_perfil (idusuario, premiumhasta)
+       VALUES ($1, now() + make_interval(months => $2::int))
+       ON CONFLICT (idusuario) DO UPDATE
+         SET premiumhasta = GREATEST(COALESCE(comprador_perfil.premiumhasta, now()), now())
+                            + make_interval(months => $2::int),
+             updated_at = now()`,
+      [idusuario, MESES_POR_CICLO],
     );
   }
 
@@ -151,7 +263,12 @@ export class SuscripcionesService {
 
     const metodo = (opts.metodo ?? 'SIMULADO').toUpperCase();
     if (metodo === 'NEQUI') {
-      return this.registrarTransferencia(idfinca, user, premium, opts);
+      return this.registrarTransferencia(
+        { idfinca, tipo: 'SUSCRIPCION' },
+        user,
+        premium,
+        opts,
+      );
     }
     if (metodo !== 'SIMULADO') {
       throw new BadRequestException('Método de pago no soportado');
@@ -188,7 +305,7 @@ export class SuscripcionesService {
   }
 
   private async registrarTransferencia(
-    idfinca: number,
+    destino: { idfinca: number | null; tipo: string },
     user: AuthUser,
     premium: { idplan: number; precio: number; moneda: string },
     opts: { referencia?: string; comprobante?: string },
@@ -213,9 +330,13 @@ export class SuscripcionesService {
     if (usada) {
       throw new ConflictException('Esa referencia ya fue registrada');
     }
+    const { idfinca, tipo } = destino;
+    // La finca (o el comprador) solo puede tener un pago en revisión a la vez.
     const [pendiente] = await this.ds.query(
-      `SELECT 1 FROM pago WHERE idfinca = $1 AND proveedor = 'NEQUI' AND estado = 'PENDIENTE'`,
-      [idfinca],
+      idfinca != null
+        ? `SELECT 1 FROM pago WHERE idfinca = $1 AND proveedor = 'NEQUI' AND estado = 'PENDIENTE'`
+        : `SELECT 1 FROM pago WHERE idusuario = $1 AND tipo = $2 AND proveedor = 'NEQUI' AND estado = 'PENDIENTE'`,
+      idfinca != null ? [idfinca] : [user.idusuario, tipo],
     );
     if (pendiente) {
       throw new ConflictException(
@@ -234,7 +355,10 @@ export class SuscripcionesService {
         );
       }
       const r = await cloudinary.uploader.upload(opts.comprobante, {
-        folder: `agrosmart/pagos/finca_${idfinca}`,
+        folder:
+          idfinca != null
+            ? `agrosmart/pagos/finca_${idfinca}`
+            : `agrosmart/pagos/comprador_${user.idusuario}`,
         transformation: [{ width: 1400, crop: 'limit' }],
       });
       comprobanteurl = r.secure_url;
@@ -242,7 +366,7 @@ export class SuscripcionesService {
 
     const [pago] = await this.ds.query(
       `INSERT INTO pago (idfinca, idusuario, tipo, monto, moneda, estado, proveedor, referenciaexterna, detalle)
-       VALUES ($1, $2, 'SUSCRIPCION', $3, $4, 'PENDIENTE', 'NEQUI', $5, $6) RETURNING idpago`,
+       VALUES ($1, $2, $7, $3, $4, 'PENDIENTE', 'NEQUI', $5, $6) RETURNING idpago`,
       [
         idfinca,
         user.idusuario,
@@ -250,6 +374,7 @@ export class SuscripcionesService {
         premium.moneda,
         referencia,
         JSON.stringify({ idplan: premium.idplan, comprobanteurl }),
+        tipo,
       ],
     );
     return {
@@ -266,7 +391,7 @@ export class SuscripcionesService {
     return this.ds.query(
       `SELECT p.idpago, p.monto::float8 AS monto, p.moneda, p.referenciaexterna AS referencia,
               p.detalle->>'comprobanteurl' AS comprobanteurl, p.created_at,
-              f.nombre AS finca, TRIM(COALESCE(u.primernombre, '') || ' ' || COALESCE(u.primerapellido, '')) AS usuario, u.email
+              COALESCE(f.nombre, 'Comprador (Premium personal)') AS finca, p.tipo, TRIM(COALESCE(u.primernombre, '') || ' ' || COALESCE(u.primerapellido, '')) AS usuario, u.email
          FROM pago p
          LEFT JOIN finca f ON f.idfinca = p.idfinca
          LEFT JOIN usuario u ON u.idusuario = p.idusuario
@@ -281,7 +406,7 @@ export class SuscripcionesService {
     this.exigirRevisor(user);
     const idfinca = await this.ds.transaction(async (m) => {
       const [p] = await m.query(
-        `SELECT idfinca, detalle, estado FROM pago
+        `SELECT idfinca, idusuario, tipo, detalle, estado FROM pago
           WHERE idpago = $1 AND proveedor = 'NEQUI' FOR UPDATE`,
         [idpago],
       );
@@ -296,6 +421,10 @@ export class SuscripcionesService {
         [idpago, aprobar ? 'APROBADO' : 'FALLIDO', user.email],
       );
       if (!aprobar) return null;
+      if (p.tipo === TIPO_PAGO_COMPRADOR) {
+        await this.activarComprador(m, p.idusuario);
+        return null;
+      }
       const [premium] = await m.query(
         `SELECT idplan FROM plan WHERE codigo = 'PREMIUM'`,
       );

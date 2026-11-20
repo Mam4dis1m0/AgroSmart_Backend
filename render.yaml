@@ -1,0 +1,43 @@
+# Despliegue en Render (https://render.com) usando el Dockerfile del proyecto.
+# Render → New → Blueprint → elige este repositorio. Las variables marcadas con
+# sync: false se escriben a mano en el panel (no se suben a git).
+services:
+  - type: web
+    name: agrosmart-backend
+    runtime: docker
+    plan: free
+    region: oregon
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_HOURS
+        value: "24"
+      - key: DATABASE_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: MAIL_USER
+        sync: false
+      - key: MAIL_PASS
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: NEQUI_NUMERO
+        sync: false
+      - key: NEQUI_TITULAR
+        value: AgroSmart
+      - key: PAGOS_REVISORES
+        sync: false
+      - key: MARKETPLACE_ESPERA_FREEMIUM_MIN
+        value: "60"

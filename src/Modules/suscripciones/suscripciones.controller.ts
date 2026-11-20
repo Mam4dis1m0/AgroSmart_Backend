@@ -30,8 +30,33 @@ export class SuscripcionesController {
   @Get('planes')
   @Roles('admin', 'empleado', 'comprador')
   @SinFinca()
-  planes() {
-    return this.service.listarPlanes();
+  planes(@CurrentUser() user: AuthUser) {
+    return this.service.listarPlanes(user);
+  }
+
+  // ── Premium del comprador ──
+  @Get('comprador/suscripcion')
+  @Roles('comprador')
+  @SinFinca()
+  miSuscripcionComprador(@CurrentUser() user: AuthUser) {
+    return this.service.miSuscripcionComprador(user.idusuario);
+  }
+
+  @Post('comprador/suscripcion/contratar')
+  @Roles('comprador')
+  @SinFinca()
+  contratarComprador(
+    @CurrentUser() user: AuthUser,
+    @Body(new ValidationPipe({ whitelist: true })) body: ContratarPlanDto,
+  ) {
+    return this.service.contratarComprador(user, body);
+  }
+
+  @Get('comprador/suscripcion/pagos')
+  @Roles('comprador')
+  @SinFinca()
+  pagosComprador(@CurrentUser() user: AuthUser) {
+    return this.service.pagosComprador(user.idusuario);
   }
 
   // GESTIONAR SUSCRIPCIÓN (CU-42)

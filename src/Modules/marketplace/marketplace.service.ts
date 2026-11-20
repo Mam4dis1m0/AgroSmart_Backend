@@ -90,7 +90,8 @@ export class MarketplaceService {
     if (user.rol === 'comprador' || user.rol === 'admin') return;
     throw new ForbiddenException({
       statusCode: 403,
-      message: 'Esta función está disponible para compradores y administradores.',
+      message:
+        'Esta función está disponible para compradores y administradores.',
     });
   }
 
@@ -114,6 +115,12 @@ export class MarketplaceService {
       ${conDistancia ? `, distancia_km($${idxLat}::numeric, $${idxLng}::numeric, l.latitud, l.longitud)::float8 AS "distanciaKm"` : ''}`;
   }
 
+  /** Condición SQL: el usuario del parámetro indicado es comprador Premium vigente. */
+  private compradorPremiumSql(param: string): string {
+    return `EXISTS (SELECT 1 FROM comprador_perfil cpx
+                     WHERE cpx.idusuario = ${param}::int AND cpx.premiumhasta > now())`;
+  }
+
   async catalogo(q: CatalogoQueryDto, user: AuthUser) {
     this.exigirOnline();
 
@@ -126,8 +133,10 @@ export class MarketplaceService {
     const where: string[] = [
       `l.estado = 'PUBLICADO'`,
       `l.volumendisponible > 0`,
-      // Ofertas de vendedores Freemium en espera: aún no visibles (salvo para la propia finca)
-      `(l.earlyaccesshasta IS NULL OR l.earlyaccesshasta <= now() OR l.idfinca = ${p(user.idfinca)}::int)`,
+      // Ofertas de vendedores Freemium en espera: aún no visibles, salvo para la propia finca
+      // y para los compradores Premium (acceso anticipado).
+      `(l.earlyaccesshasta IS NULL OR l.earlyaccesshasta <= now() OR l.idfinca = ${p(user.idfinca)}::int
+        OR ${this.compradorPremiumSql(p(user.idusuario))})`,
     ];
     if (q.q)
       where.push(
@@ -174,8 +183,9 @@ export class MarketplaceService {
          FROM listado l JOIN finca f ON f.idfinca = l.idfinca
         WHERE l.idlistado = $1
           AND l.estado = 'PUBLICADO'
-          AND (l.earlyaccesshasta IS NULL OR l.earlyaccesshasta <= now() OR l.idfinca = $2::int)`,
-      [idlistado, user.idfinca],
+          AND (l.earlyaccesshasta IS NULL OR l.earlyaccesshasta <= now() OR l.idfinca = $2::int
+               OR ${this.compradorPremiumSql('$3')})`,
+      [idlistado, user.idfinca, user.idusuario],
     );
     if (!fila) throw new NotFoundException('El producto no está disponible');
     return fila;
@@ -259,6 +269,8 @@ export class MarketplaceService {
     // CU-34: avisar a compradores cercanos. Si queda en espera, lo hace publicarOfertasEnEspera().
     if (publicar && !holdHasta) {
       await this.notificarCompradoresCercanos(guardado);
+    } else if (publicar && holdHasta) {
+      await this.notificarCompradoresCercanos(guardado, 'premium');
     }
 
     return {
@@ -279,6 +291,7 @@ export class MarketplaceService {
   ) {
     this.exigirOnline();
     let publicadaAhora = false;
+    let publicadaEnEspera = false;
     await this.ds.transaction(async (m) => {
       const [actual] = await m.query(
         `SELECT estado, volumendisponible::float8 AS volumen FROM listado WHERE idlistado = $1 AND idfinca = $2 FOR UPDATE`,
@@ -311,6 +324,7 @@ export class MarketplaceService {
       if (actual.estado === 'BORRADOR' && cambios.estado === 'PUBLICADO') {
         cambios.earlyaccesshasta = await this.visibleDesde(idfinca);
         publicadaAhora = cambios.earlyaccesshasta === null;
+        publicadaEnEspera = !publicadaAhora;
       }
 
       if (Object.keys(cambios).length > 0) {
@@ -326,9 +340,14 @@ export class MarketplaceService {
         }
       }
     });
-    if (publicadaAhora) {
+    if (publicadaAhora || publicadaEnEspera) {
       const l = await this.ds.getRepository(Listado).findOneBy({ idlistado });
-      if (l) await this.notificarCompradoresCercanos(l);
+      if (l) {
+        await this.notificarCompradoresCercanos(
+          l,
+          publicadaAhora ? 'todos' : 'premium',
+        );
+      }
     }
     return this.listadoPropio(idlistado, idfinca);
   }
@@ -352,7 +371,8 @@ export class MarketplaceService {
       const ofertas = await this.ds
         .getRepository(Listado)
         .find({ where: { idlistado: In(liberadas), estado: 'PUBLICADO' } });
-      for (const l of ofertas) await this.notificarCompradoresCercanos(l);
+      for (const l of ofertas)
+        await this.notificarCompradoresCercanos(l, 'noPremium');
       this.logger.log(
         `Ofertas visibles tras la espera Freemium: ${liberadas.join(', ')}`,
       );
@@ -455,8 +475,17 @@ export class MarketplaceService {
   }
 
   // ── CU-34 · Alertas de ofertas cercanas ───────────────────────────────────
-  private async notificarCompradoresCercanos(l: Listado): Promise<void> {
+  private async notificarCompradoresCercanos(
+    l: Listado,
+    quienes: 'todos' | 'premium' | 'noPremium' = 'todos',
+  ): Promise<void> {
     if (l.latitud === null || l.longitud === null) return;
+    const filtro =
+      quienes === 'premium'
+        ? 'AND cp.premiumhasta > now()'
+        : quienes === 'noPremium'
+          ? 'AND (cp.premiumhasta IS NULL OR cp.premiumhasta <= now())'
+          : '';
     try {
       await this.ds.query(
         `INSERT INTO notificacion (mensaje, tipo, tabla_origen, idregistro, idusuariodestino, titulo, idfinca)
@@ -464,7 +493,8 @@ export class MarketplaceService {
            FROM comprador_perfil cp
            JOIN usuario u ON u.idusuario = cp.idusuario AND u.activo = true
           WHERE cp.notificaciones = true AND cp.latitud IS NOT NULL AND cp.longitud IS NOT NULL
-            AND distancia_km(cp.latitud, cp.longitud, $3::numeric, $4::numeric) <= cp.radioalertaskm`,
+            AND distancia_km(cp.latitud, cp.longitud, $3::numeric, $4::numeric) <= cp.radioalertaskm
+            ${filtro}`,
         [
           `${l.titulo} — ${l.volumendisponible} ${l.unidad} a ${l.preciounitario} ${l.moneda}/${l.unidad}`,
           l.idlistado,
@@ -494,7 +524,15 @@ export class MarketplaceService {
     );
     const enEspera =
       l?.earlyaccesshasta && new Date(l.earlyaccesshasta) > new Date();
-    if (!l || l.estado !== 'PUBLICADO' || enEspera) {
+    let accesoAnticipado = false;
+    if (enEspera) {
+      const [r] = await this.ds.query(
+        `SELECT ${this.compradorPremiumSql('$1')} AS premium`,
+        [user.idusuario],
+      );
+      accesoAnticipado = r?.premium === true;
+    }
+    if (!l || l.estado !== 'PUBLICADO' || (enEspera && !accesoAnticipado)) {
       throw new NotFoundException('El producto no está disponible');
     }
     if (user.rol === 'admin' && user.idfinca === l.idfinca) {
@@ -565,7 +603,9 @@ export class MarketplaceService {
               o.comisionvalor::float8 AS comisionvalor, o.netovendedor::float8 AS netovendedor,
               o.puntoentrega, o.notas, o.created_at AS "createdAt", o.fechacierre,
               l.titulo, l.unidad,
-              u.primernombre AS "compradorNombre", u.telefono AS "compradorTelefono"
+              u.primernombre AS "compradorNombre", u.telefono AS "compradorTelefono",
+              EXISTS (SELECT 1 FROM comprador_perfil cpx
+                       WHERE cpx.idusuario = o.idcomprador AND cpx.premiumhasta > now()) AS "compradorPremium"
          FROM orden_compra o
          JOIN listado l ON l.idlistado = o.idlistado
          JOIN usuario u ON u.idusuario = o.idcomprador
